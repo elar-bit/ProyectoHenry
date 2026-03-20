@@ -95,6 +95,21 @@ export async function extractBCPByColumns(
 ): Promise<ExtractBCPResult> {
   // pdfjs-dist is only needed on server side.
   const pdfjsLib: any = await import('pdfjs-dist/legacy/build/pdf.mjs');
+
+  // pdfjs (Node) uses a "fake worker" path that tries to dynamically import
+  // `workerSrc`. In serverless Next runtimes this can fail because the
+  // relative workerSrc doesn't exist in the bundle.
+  // pdfjs provides an escape hatch: if `globalThis.pdfjsWorker?.WorkerMessageHandler`
+  // exists, it uses it and skips importing `workerSrc`.
+  try {
+    const g = globalThis as any;
+    if (!g.pdfjsWorker?.WorkerMessageHandler) {
+      g.pdfjsWorker = await import('pdfjs-dist/legacy/build/pdf.worker.mjs');
+    }
+  } catch {
+    // If this fails, we fall back to pdfjs' default fake-worker behavior.
+  }
+
   // In serverless/Next chunks, resolving worker paths via `eval('require')`
   // can fail. Use createRequire so `pdfjs-dist` can load the worker file.
   let workerUrl: string | undefined;
