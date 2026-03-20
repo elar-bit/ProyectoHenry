@@ -231,8 +231,9 @@ export function parseTransactions(text: string): ParsedTransaction[] {
 
     const descUpper = descPart.toUpperCase();
 
-    const hasHK = descUpper.includes('.HK') || /\bHK\b/.test(descUpper) || descUpper.includes('CRZ');
+    const hasHK = descUpper.includes('.HK') || /\bHK\b/.test(descUpper);
     const hasBM = descUpper.includes('.BM') || /\bBM\b/.test(descUpper) || descUpper.includes('CMB');
+    const hasCRZ = descUpper.includes('CRZ');
 
     const looksCredit =
       /\bABON\b/.test(descUpper) ||
@@ -241,7 +242,8 @@ export function parseTransactions(text: string): ParsedTransaction[] {
       /\bDEP\.?EN\b/.test(descUpper) ||
       /\bDEP\.?\b/.test(descUpper) ||
       /INTERES/.test(descUpper) ||
-      hasHK;
+      hasBM ||
+      hasCRZ;
 
     const looksDebit =
       /\bPAGO\b/.test(descUpper) ||
@@ -252,7 +254,7 @@ export function parseTransactions(text: string): ParsedTransaction[] {
       /\bTRANSFER\b/.test(descUpper) ||
       /MANT/i.test(descUpper) ||
       /\bOPE\.?VENTANILLA\b/.test(descUpper) ||
-      hasBM;
+      hasHK;
 
     let debitStr = '';
     let creditStr = '';
@@ -485,22 +487,13 @@ export function cleanAndValidateData(
   const initialBalance = balances.initial;
   const finalBalance = balances.final;
 
-  const formatMoney = (value: number) =>
-    value.toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-
   const cleanedTransactions = [
     {
       fechaProc: '',
       fechaValor: '',
-      description:
-        typeof initialBalance === 'number'
-          ? `SALDO ANTERIOR ${formatMoney(initialBalance)}`
-          : 'SALDO ANTERIOR',
+      description: 'SALDO ANTERIOR',
       debit: 0,
-      credit: 0,
+      credit: typeof initialBalance === 'number' ? initialBalance : 0,
     },
     ...transactions.map((tx) => ({
       fechaProc: tx.fechaProc,
