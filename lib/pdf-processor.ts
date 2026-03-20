@@ -15,8 +15,23 @@ function parseLatamNumber(value: string): number {
     return 0;
   }
 
+  // Negative numbers can appear as:
+  // - accounting: (1.234,56)
+  // - trailing minus: 3.50-
+  // - leading minus: -3.50
+  let isNegative = false;
+  if (value.startsWith('-')) {
+    isNegative = true;
+    value = value.slice(1);
+  }
+  if (value.endsWith('-')) {
+    isNegative = true;
+    value = value.slice(0, -1);
+  }
+
   // Accounting negatives: (1.234,56)
   const isNegativeAccounting = value.startsWith('(') && value.endsWith(')');
+  if (isNegativeAccounting) isNegative = true;
   value = value.replace(/[()]/g, '');
 
   // Remove currency symbols/letters, keep digits and separators
@@ -61,7 +76,7 @@ function parseLatamNumber(value: string): number {
 
   const num = parseFloat(value);
   if (Number.isNaN(num)) return 0;
-  return isNegativeAccounting ? -num : num;
+  return isNegative ? -num : num;
 }
 
 // Remove OCR noise and common header patterns
@@ -268,6 +283,102 @@ export function parseTransactions(text: string): ParsedTransaction[] {
   // If we successfully parsed BCP transactions, return them.
   if (transactions.length > 0) {
     return transactions;
+  }
+
+  // Strategy 1.5: Another BCP layout where dates look like "02-01" (DD-MM)
+  // and the amount appears at the end of each row.
+  // Example:
+  //   02-01 Pago YAPE de 19110 ... 23.00
+  //   02-01 IMPUESTO ITF ... .85-
+  {
+    const yearMatch = text.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    const inferredYear = yearMatch ? parseInt(yearMatch[3], 10) : undefined;
+
+    if (inferredYear !== undefined) {
+      const dmRegex = /^(\d{1,2})-(\d{1,2})\s+(.+)$/;
+
+      for (const originalLine of lines) {
+        const line = originalLine.trim();
+        if (!line) continue;
+
+        const dmMatch = line.match(dmRegex);
+        if (!dmMatch) continue;
+
+        const dayNum = parseInt(dmMatch[1], 10);
+        const monthNum = parseInt(dmMatch[2], 10);
+        const rest = dmMatch[3];
+
+        if (Number.isNaN(dayNum) || Number.isNaN(monthNum)) continue;
+        if (monthNum < 1 || monthNum > 12) continue;
+
+        const date = `${String(dayNum).padStart(2, '0')}/${String(
+          monthNum
+        ).padStart(2, '0')}/${inferredYear}`;
+
+        // Amount = last numeric token in the line (can be "3.50-" for negative)
+        // Amount can appear as "23.00" or ".85-" depending on OCR.
+        const amountMatch = rest.match(
+          /((?:\d[\d.,]*\d|\.\d+)(?:-)?)(?:\s*)$/
+        );
+        if (!amountMatch) continue;
+
+        const amountTokenRaw = amountMatch[1].trim();
+        const amountTokenClean = amountTokenRaw.replace(/-$/, '');
+        const amountValue = parseLatamNumber(amountTokenRaw);
+        if (Number.isNaN(amountValue)) continue;
+
+        const descPart = rest.slice(0, rest.length - amountTokenRaw.length).trim();
+        const descUpper = descPart.toUpperCase();
+
+        const looksCredit =
+          /\bABON\b/.test(descUpper) ||
+          /\bABONO\b/.test(descUpper) ||
+          /\bDEPOSITO\b/.test(descUpper) ||
+          /\bDEP\.?EN\b/.test(descUpper) ||
+          /\bINTERES/.test(descUpper) ||
+          /\bGANADO\b/.test(descUpper);
+
+        const looksDebit =
+          /\bPAGO\b/.test(descUpper) ||
+          /\bRET\./.test(descUpper) ||
+          /\bIMPUESTO\b/.test(descUpper) ||
+          /\bITF\b/.test(descUpper) ||
+          /\bTRANSF\b/.test(descUpper) ||
+          /\bTRANSFER\b/.test(descUpper) ||
+          /\bOPE\.?VENTANILLA\b/.test(descUpper) ||
+          /\bMANT\b/.test(descUpper);
+
+        const isTrailingNegative = amountTokenRaw.endsWith('-');
+
+        let debitStr = '';
+        let creditStr = '';
+
+        // If the PDF encodes negatives via "X.XX-", treat them as debits.
+        if (isTrailingNegative) {
+          debitStr = amountTokenClean;
+        } else if (looksCredit && !looksDebit) {
+          creditStr = amountTokenClean;
+        } else if (looksDebit && !looksCredit) {
+          debitStr = amountTokenClean;
+        } else {
+          // Default: debit for ambiguous cases
+          debitStr = amountTokenClean;
+        }
+
+        transactions.push({
+          date,
+          description: cleanDescription(descPart),
+          debit: debitStr,
+          credit: creditStr,
+          balance: '',
+          raw: line,
+        });
+      }
+
+      if (transactions.length > 0) {
+        return transactions;
+      }
+    }
   }
 
   // Strategy 2: generic "DD/MM/YYYY <desc> <debit> <credit> <balance>" format
