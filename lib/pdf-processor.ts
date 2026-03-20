@@ -675,7 +675,10 @@ function parseCurrentAccountDescription(desc: string): {
   const tokens = desc
     .split(/\s+/)
     .map((t) => t.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    // Tokens OCR sueltos que no aportan información de los campos
+    // estructurados y suelen “romper” los índices del tail.
+    .filter((t) => t !== '-' && t !== '¥' && t !== '*');
 
   // Identify HORA: token like 18:55
   const iHora = tokens.findIndex((t) => /^\d{1,2}:\d{2}$/.test(t));
@@ -690,12 +693,15 @@ function parseCurrentAccountDescription(desc: string): {
   }
 
   const iOrigen = iTipo >= 1 ? iTipo - 1 : -1;
+
+  // If HORA is present, we can parse the full structured tail.
+  // Otherwise we only populate ORIGEN + TIPO and keep the rest blank.
   const iNumOp = iHora >= 1 ? iHora - 1 : -1;
   const iLugar = iNumOp >= 1 ? iNumOp - 1 : -1;
   const iMedat = iLugar >= 1 ? iLugar - 1 : -1;
 
-  // If we can't reliably parse the structured tail, return everything as description.
-  if (iHora < 0 || iTipo < 0 || iNumOp < 0 || iLugar < 0 || iMedat < 0) {
+  // If we can't even find TIPO, return everything as description.
+  if (iTipo < 0 || iOrigen < 0) {
     return {
       descripcion: desc,
       medat: '',
@@ -709,16 +715,19 @@ function parseCurrentAccountDescription(desc: string): {
   }
 
   return {
-    descripcion: tokens.slice(0, iMedat).join(' ').trim(),
-    medat: tokens[iMedat] || '',
+    descripcion:
+      iHora >= 0 && iMedat >= 0
+        ? tokens.slice(0, iMedat).join(' ').trim()
+        : tokens.slice(0, iOrigen).join(' ').trim(),
+    medat: iMedat >= 0 ? tokens[iMedat] || '' : '',
     // En este formato, lo que OCR reporta en la cola suele corresponder a
     // "SUC-AGE" (no a "Lugar"). Dejamos "Lugar" vacío y movemos el token.
     lugar: '',
-    sucAge: tokens[iLugar] || '',
-    numOp: tokens[iNumOp] || '',
-    hora: tokens[iHora] || '',
-    origen: iOrigen >= 0 ? tokens[iOrigen] : '',
-    tipo: iTipo >= 0 ? tokens[iTipo] : '',
+    sucAge: iLugar >= 0 ? tokens[iLugar] || '' : '',
+    numOp: iNumOp >= 0 ? tokens[iNumOp] || '' : '',
+    hora: iHora >= 0 ? tokens[iHora] : '',
+    origen: tokens[iOrigen] || '',
+    tipo: tokens[iTipo] || '',
   };
 }
 
