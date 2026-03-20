@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import pdfParse from 'pdf-parse';
 import { parseTransactions, cleanAndValidateData } from '@/lib/pdf-processor';
 import { extractBCPByColumns } from '@/lib/bcp-extract-by-columns';
+import { extractWithPdfPlumber } from '@/lib/extract-pdfplumber';
 
 export async function POST(request: NextRequest) {
   try {
@@ -30,13 +31,24 @@ export async function POST(request: NextRequest) {
     const text = data.text;
 
     // Parse transactions:
-    // 1) Try exact column-based extraction (avoids guessing Debe/Haber)
-    // 2) Fallback to heuristics
+    // 1) pdfplumber (Python): tablas + palabras alineadas a encabezados DEBE/HABER
+    // 2) pdfjs-dist en TypeScript (sin Python / Vercel)
+    // 3) Heurísticas sobre texto plano
     let transactions = [] as ReturnType<typeof parseTransactions>;
     try {
-      transactions = await extractBCPByColumns(buffer);
-    } catch (e) {
+      const plumb = extractWithPdfPlumber(buffer);
+      if (plumb && plumb.length > 0) {
+        transactions = plumb;
+      }
+    } catch {
       transactions = [];
+    }
+    if (!transactions || transactions.length === 0) {
+      try {
+        transactions = await extractBCPByColumns(buffer);
+      } catch {
+        transactions = [];
+      }
     }
     if (!transactions || transactions.length === 0) {
       transactions = parseTransactions(text);

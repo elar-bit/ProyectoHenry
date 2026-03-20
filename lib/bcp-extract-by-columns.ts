@@ -98,23 +98,41 @@ export async function extractBCPByColumns(
     const textContent = await page.getTextContent();
     const items = textContent.items as Array<any>;
 
-    // Determine column anchors for Debe/Haber using header labels.
-    let debitAnchorX: number | null = null;
-    let creditAnchorX: number | null = null;
+    // Centros X de encabezados CARGOS/DEBE y ABONOS/HABER (promedio de todos los tokens).
+    const debeCenters: number[] = [];
+    const haberCenters: number[] = [];
 
     for (const it of items) {
       const str = (it.str ?? '').toString();
       const transform = it.transform as number[];
       const x = transform?.[4];
       if (typeof x !== 'number') continue;
+      const w =
+        typeof (it as { width?: number }).width === 'number'
+          ? (it as { width: number }).width
+          : str.length * 4.5;
+      const cx = x + w / 2;
       const upper = str.toUpperCase();
-      if (!debitAnchorX && (upper.includes('DEBE') || upper.includes('CARGOS'))) {
-        debitAnchorX = x;
-      }
-      if (!creditAnchorX && (upper.includes('HABER') || upper.includes('ABONOS'))) {
-        creditAnchorX = x;
-      }
+      const isDebe =
+        /\b(DEBE|CARGOS)\b/.test(upper) ||
+        upper === 'DEBE' ||
+        upper === 'CARGOS';
+      const isHaber =
+        /\b(HABER|ABONOS)\b/.test(upper) ||
+        upper === 'HABER' ||
+        upper === 'ABONOS';
+      if (isDebe) debeCenters.push(cx);
+      if (isHaber) haberCenters.push(cx);
     }
+
+    const debitAnchorX =
+      debeCenters.length > 0
+        ? debeCenters.reduce((a, b) => a + b, 0) / debeCenters.length
+        : null;
+    const creditAnchorX =
+      haberCenters.length > 0
+        ? haberCenters.reduce((a, b) => a + b, 0) / haberCenters.length
+        : null;
 
     const rowTol = 6; // y tolerance in PDF units
 
@@ -144,51 +162,14 @@ export async function extractBCPByColumns(
     // Sort rows top-to-bottom by y descending (heuristic).
     rows.sort((a, b) => b.y - a.y);
 
-    // Determine amount column clusters (left vs right) using layout positions.
-    const amountXs: number[] = [];
-    for (const it of items) {
-      const str = (it.str ?? '').toString().trim();
-      const x = (it.transform as number[] | undefined)?.[4];
-      const y = (it.transform as number[] | undefined)?.[5];
-      if (typeof x !== 'number' || typeof y !== 'number') continue;
-      if (!str) continue;
-      if (!str.includes('.')) continue;
-      if (!isAmountToken(str)) continue;
-      // movement table area only
-      if (y < 250 || y > 600) continue;
-      amountXs.push(x);
-    }
-
-    if (amountXs.length < 5) continue;
-
-    let c1 = Math.min(...amountXs);
-    let c2 = Math.max(...amountXs);
-    for (let iter = 0; iter < 8; iter++) {
-      const cluster1: number[] = [];
-      const cluster2: number[] = [];
-      for (const x of amountXs) {
-        if (Math.abs(x - c1) <= Math.abs(x - c2)) cluster1.push(x);
-        else cluster2.push(x);
-      }
-      if (cluster1.length === 0 || cluster2.length === 0) break;
-      const mean = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
-      const nc1 = mean(cluster1);
-      const nc2 = mean(cluster2);
-      if (Math.abs(nc1 - c1) < 0.01 && Math.abs(nc2 - c2) < 0.01) break;
-      c1 = nc1;
-      c2 = nc2;
-    }
-
-    const leftCenter = Math.min(c1, c2);
-    const rightCenter = Math.max(c1, c2);
-    let debitCenter = leftCenter;
-    let creditCenter = rightCenter;
-
+    // Frontera entre Cargos (izquierda) y Abonos (derecha) según encabezados.
+    let boundary: number | null = null;
     if (debitAnchorX !== null && creditAnchorX !== null) {
-      const distLeftToDebe = Math.abs(leftCenter - debitAnchorX);
-      const distRightToDebe = Math.abs(rightCenter - debitAnchorX);
-      debitCenter = distLeftToDebe <= distRightToDebe ? leftCenter : rightCenter;
-      creditCenter = debitCenter === leftCenter ? rightCenter : leftCenter;
+      const lo = Math.min(debitAnchorX, creditAnchorX);
+      const hi = Math.max(debitAnchorX, creditAnchorX);
+      boundary = (lo + hi) / 2;
+    } else {
+      continue;
     }
 
     for (const r of rows) {
@@ -211,12 +192,16 @@ export async function extractBCPByColumns(
 
       const amountToken = amountCandidates[0];
       const amount = (amountToken.str ?? '').toString().trim();
-      const amountX = amountToken.x as number;
+      const w =
+        typeof (amountToken as { width?: number }).width === 'number'
+          ? (amountToken as { width: number }).width
+          : amount.length * 4.5;
+      const amountCx = (amountToken.x as number) + w / 2;
 
-      const distToDeb = Math.abs(amountX - debitCenter);
-      const distToCre = Math.abs(amountX - creditCenter);
-      const debit = distToDeb <= distToCre ? amount : '0';
-      const credit = distToCre < distToDeb ? amount : '0';
+      const debit =
+        boundary !== null && amountCx < boundary ? amount : '0';
+      const credit =
+        boundary !== null && amountCx >= boundary ? amount : '0';
 
       const description = rowItems
         .sort((a, b) => a.x - b.x)
