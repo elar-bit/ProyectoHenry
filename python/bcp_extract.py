@@ -167,9 +167,12 @@ def group_words_into_lines(words: list[dict[str, Any]], tol: float = 3.0):
     return lines
 
 
-def amount_zone_assignment(xc: float, boundary: float, lo: float, hi: float) -> str:
-    """'debit' = Cargo (columna más cercana a lo), 'credit' = Abono (más cercana a hi)."""
-    if xc < boundary:
+def amount_zone_assignment(x_pos: float, boundary: float, lo: float, hi: float) -> str:
+    """
+    'debit' = Cargo (izquierda), 'credit' = Abono (derecha).
+    Usamos x0 (borde izquierdo del token) para evitar cruces por ancho del texto.
+    """
+    if x_pos < boundary:
         return "debit"
     return "credit"
 
@@ -191,9 +194,8 @@ def parse_page_lines(page, lo: float, hi: float, boundary: float):
         keep_blank_chars=False,
         extra_attrs=["size"],
     )
-    h = float(page.height)
-    # Ignorar zona inferior (leyendas "Mensaje al cliente", etc.)
-    words = [w for w in words if float(w["top"]) < h * 0.92]
+    # No recortar verticalmente: en páginas cortas el último movimiento puede
+    # quedar en la franja inferior y se perdería.
 
     fecha_cutoff = max(0.0, lo - 120.0)
 
@@ -206,6 +208,22 @@ def parse_page_lines(page, lo: float, hi: float, boundary: float):
             continue
         line_text_upper = " ".join(w["text"].upper() for w in line_words)
         if "FECHA" in line_text_upper and "VALOR" in line_text_upper:
+            continue
+        # Footer/noise markers: close current movement and stop merging lines.
+        if any(
+            mark in line_text_upper
+            for mark in (
+                "TOTAL MOVIMIENTO",
+                "MENSAJE AL CLIENTE",
+                "DEFENSOR DEL CLIENTE",
+                "INDECOPI",
+                "OFICINAS",
+                "SALDO",
+            )
+        ):
+            if current:
+                transactions.append(current)
+                current = None
             continue
 
         sorted_x = sorted(line_words, key=lambda w: float(w["x0"]))
@@ -238,8 +256,8 @@ def parse_page_lines(page, lo: float, hi: float, boundary: float):
         if amounts:
             pick = amounts[0]
             amt = normalize_amount(pick["text"])
-            xc = word_center(pick)
-            side = amount_zone_assignment(xc, boundary, lo, hi)
+            x_pos = float(pick["x0"])
+            side = amount_zone_assignment(x_pos, boundary, lo, hi)
             if side == "debit":
                 debit_val = amt
             else:
@@ -260,26 +278,7 @@ def parse_page_lines(page, lo: float, hi: float, boundary: float):
             if description:
                 prev = current.get("description") or ""
                 current["description"] = (prev + " " + description).strip()
-            if amounts:
-                if current.get("debit") == "0" and current.get("credit") == "0":
-                    pick = amounts[0]
-                    amt = normalize_amount(pick["text"])
-                    xc = word_center(pick)
-                    side = amount_zone_assignment(xc, boundary, lo, hi)
-                    if side == "debit":
-                        current["debit"] = amt
-                    else:
-                        current["credit"] = amt
-                else:
-                    # Segunda línea con monto: solo si aún no hay en esa columna
-                    pick = amounts[0]
-                    amt = normalize_amount(pick["text"])
-                    xc = word_center(pick)
-                    side = amount_zone_assignment(xc, boundary, lo, hi)
-                    if side == "debit" and current.get("debit") == "0":
-                        current["debit"] = amt
-                    elif side == "credit" and current.get("credit") == "0":
-                        current["credit"] = amt
+            # No tomar montos de líneas sin fecha: suelen ser saldos/footers.
 
     if current:
         transactions.append(current)

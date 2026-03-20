@@ -86,9 +86,16 @@ export async function extractBCPByColumns(
 ): Promise<ExtractBCPResult> {
   // pdfjs-dist is only needed on server side.
   const pdfjsLib: any = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  // In Next.js server chunks, worker resolution can fail.
+  // We rely on disableWorker below and avoid setting workerSrc.
 
   const doc = await pdfjsLib
-    .getDocument({ data: pdfBuffer, disableWorker: true })
+    .getDocument({
+      data: new Uint8Array(pdfBuffer),
+      disableWorker: true,
+      isEvalSupported: false,
+      useWorkerFetch: false,
+    })
     .promise;
 
   const allTransactions: ParsedTransaction[] = [];

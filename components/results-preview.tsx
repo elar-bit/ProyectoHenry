@@ -13,6 +13,8 @@ interface Transaction {
 
 interface ResultsData {
   transactions: Transaction[];
+  parserSource?: 'pdfplumber' | 'pdfjs-columns' | 'heuristic-text';
+  extractionVersion?: string;
   accountInfo: {
     accountNumber?: string;
     reportBalance?: number;
@@ -149,6 +151,12 @@ export default function ResultsPreview({
               : 'N/A'}
           </p>
         </div>
+        {(data.parserSource || data.extractionVersion) && (
+          <div className="mt-3 text-xs text-slate-500">
+            Motor: {data.parserSource || 'desconocido'} | Version:{' '}
+            {data.extractionVersion || 'n/a'}
+          </div>
+        )}
       </div>
 
       {/* Transactions Table */}

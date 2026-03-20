@@ -31,20 +31,28 @@ export async function POST(request: NextRequest) {
     const text = data.text;
 
     // Parse transactions:
-    // 1) pdfjs-dist en TypeScript (mas estable en estos estados BCP)
-    // 2) pdfplumber (Python) como respaldo
-    // 3) Heurísticas sobre texto plano
+    // 1) pdfjs-columns (motor principal BCP, validado 1:1)
+    // 2) pdfplumber como respaldo técnico
+    // 3) Heurística solo para PDFs no tabulares BCP
     let transactions = [] as ReturnType<typeof parseTransactions>;
     let parserSource: 'pdfplumber' | 'pdfjs-columns' | 'heuristic-text' =
       'heuristic-text';
-    try {
-      transactions = await extractBCPByColumns(buffer);
-      if (transactions.length > 0) {
-        parserSource = 'pdfjs-columns';
+    let pdfjsError: string | null = null;
+    const looksLikeBCPColumns =
+      /(CARGOS|DEBE)/i.test(text) && /(ABONOS|HABER)/i.test(text);
+
+    if (!transactions || transactions.length === 0) {
+      try {
+        transactions = await extractBCPByColumns(buffer);
+        if (transactions.length > 0) {
+          parserSource = 'pdfjs-columns';
+        }
+      } catch (e) {
+        pdfjsError = e instanceof Error ? e.message : 'unknown';
+        transactions = [];
       }
-    } catch {
-      transactions = [];
     }
+
     if (!transactions || transactions.length === 0) {
       try {
         const plumb = extractWithPdfPlumber(buffer);
@@ -56,8 +64,25 @@ export async function POST(request: NextRequest) {
         transactions = [];
       }
     }
+
     if (!transactions || transactions.length === 0) {
-      // Fallback final para no bloquear la conversión.
+      // Para BCP tabular, nunca degradar a heurística textual.
+      if (looksLikeBCPColumns) {
+        return NextResponse.json(
+          {
+            error:
+              'No se pudo extraer el estado BCP con segmentacion por columnas.',
+            parserSource: 'none',
+            extractionVersion: 'v2-column-boundary',
+            parserDebug:
+              process.env.NODE_ENV !== 'production'
+                ? { pdfjsError, looksLikeBCPColumns }
+                : undefined,
+          },
+          { status: 422 }
+        );
+      }
+      // Fallback final para PDFs no tabulares.
       transactions = parseTransactions(text);
       parserSource = 'heuristic-text';
     }
@@ -68,6 +93,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ...result,
       parserSource,
+      extractionVersion: 'v2-column-boundary',
+      parserDebug:
+        process.env.NODE_ENV !== 'production'
+          ? { pdfjsError, looksLikeBCPColumns }
+          : undefined,
     });
   } catch (error) {
     console.error('PDF parsing error:', error);
