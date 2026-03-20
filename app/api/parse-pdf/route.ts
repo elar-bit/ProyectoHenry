@@ -56,18 +56,7 @@ export async function POST(request: NextRequest) {
       }
     }
     if (!transactions || transactions.length === 0) {
-      const looksLikeStructuredStatement =
-        /(CARGOS|DEBE)/i.test(text) && /(ABONOS|HABER)/i.test(text);
-      // Evitar clasificaciones erróneas cuando sí existe estructura tabular.
-      if (looksLikeStructuredStatement) {
-        return NextResponse.json(
-          {
-            error:
-              'No se pudo extraer con segmentacion por columnas. No se aplico fallback heuristico para evitar cargos/abonos incorrectos.',
-          },
-          { status: 422 }
-        );
-      }
+      // Fallback final para no bloquear la conversión.
       transactions = parseTransactions(text);
       parserSource = 'heuristic-text';
     }
