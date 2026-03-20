@@ -243,10 +243,12 @@ export function parseTransactions(text: string): ParsedTransaction[] {
       /\bDEP\.?\b/.test(descUpper) ||
       /INTERES/.test(descUpper) ||
       hasBM ||
-      hasCRZ;
+      hasCRZ ||
+      // In these BCP statements, "Pago YAPE" is typically shown under ABONOS/HABER.
+      /\bPAGO\s+YAPE\b/.test(descUpper) ||
+      /\bPAGO\b/.test(descUpper);
 
     const looksDebit =
-      /\bPAGO\b/.test(descUpper) ||
       /\bRET\./.test(descUpper) ||
       /\bIMPUESTO\b/.test(descUpper) ||
       /\bITF\b/.test(descUpper) ||
@@ -266,12 +268,12 @@ export function parseTransactions(text: string): ParsedTransaction[] {
     } else {
       // If both heuristics trigger (rare), use HK/BM hints.
       if (hasHK && !hasBM) {
-        creditStr = amountToken;
+        debitStr = amountToken;
       } else if (hasBM && !hasHK) {
-        debitStr = amountToken;
+        creditStr = amountToken;
       } else {
-        // Default to debit for ambiguous cases.
-        debitStr = amountToken;
+        // Default: abono (credit) to match the statement majority.
+        creditStr = amountToken;
       }
     }
 
@@ -341,10 +343,11 @@ export function parseTransactions(text: string): ParsedTransaction[] {
           /\bDEPOSITO\b/.test(descUpper) ||
           /\bDEP\.?EN\b/.test(descUpper) ||
           /\bINTERES/.test(descUpper) ||
-          /\bGANADO\b/.test(descUpper);
+          /\bGANADO\b/.test(descUpper) ||
+          /\bPAGO\s+YAPE\b/.test(descUpper) ||
+          /\bPAGO\b/.test(descUpper);
 
         const looksDebit =
-          /\bPAGO\b/.test(descUpper) ||
           /\bRET\./.test(descUpper) ||
           /\bIMPUESTO\b/.test(descUpper) ||
           /\bITF\b/.test(descUpper) ||
@@ -366,8 +369,8 @@ export function parseTransactions(text: string): ParsedTransaction[] {
         } else if (looksDebit && !looksCredit) {
           debitStr = amountTokenClean;
         } else {
-          // Default: debit for ambiguous cases
-          debitStr = amountTokenClean;
+          // Default: abono (credit) for ambiguous cases
+          creditStr = amountTokenClean;
         }
 
         transactions.push({
