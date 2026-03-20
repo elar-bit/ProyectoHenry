@@ -70,6 +70,22 @@ export async function POST(request: NextRequest) {
     if (!transactions || transactions.length === 0) {
       // Para BCP tabular, nunca degradar a heurística textual.
       if (looksLikeBCPColumns) {
+        // Formato alternativo (ej. "ESTADO DE CUENTA CORRIENTE" / "IMPORT & EXPORT")
+        // donde los extractores por coordenadas pueden devolver 0 en serverless.
+        // En ese caso permitimos el fallback heurístico para no bloquear la conversión.
+        const looksLikeAltBCP =
+          /(ESTADO\s+DE\s+CUENTA\s+CORRIENTE|IMPORT\s*&\s*EXPORT)/i.test(text);
+
+        if (looksLikeAltBCP) {
+          try {
+            transactions = parseTransactions(text);
+            parserSource = 'heuristic-text';
+          } catch {
+            // Fall through to 422 below
+          }
+        }
+
+        if (!transactions || transactions.length === 0) {
         return NextResponse.json(
           {
             error:
@@ -80,6 +96,7 @@ export async function POST(request: NextRequest) {
           },
           { status: 422 }
         );
+        }
       }
       // Fallback final para PDFs no tabulares.
       transactions = parseTransactions(text);
