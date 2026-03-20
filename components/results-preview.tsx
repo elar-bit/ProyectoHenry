@@ -25,6 +25,9 @@ interface ResultsPreviewProps {
   onReset: () => void;
 }
 
+/** Filas mostradas en la tabla de vista previa (el Excel lleva todas). */
+const PREVIEW_ROW_LIMIT = 50;
+
 export default function ResultsPreview({
   data,
   onReset,
@@ -172,7 +175,9 @@ export default function ResultsPreview({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {data.transactions.slice(0, 10).map((tx, index) => (
+              {data.transactions
+                .slice(0, PREVIEW_ROW_LIMIT)
+                .map((tx, index) => (
                 <tr
                   key={index}
                   className="hover:bg-slate-50 transition-colors cursor-pointer"
@@ -223,10 +228,10 @@ export default function ResultsPreview({
           </table>
         </div>
 
-        {data.transactions.length > 10 && (
+        {data.transactions.length > PREVIEW_ROW_LIMIT && (
           <div className="border-t border-slate-200 bg-slate-50 px-6 py-3 text-center text-sm text-slate-600">
-            Mostrando 10 de {data.transactions.length} transacciones (todas se
-            incluirán en el archivo de Excel)
+            Mostrando {PREVIEW_ROW_LIMIT} de {data.transactions.length}{' '}
+            transacciones (todas se incluirán en el archivo de Excel)
           </div>
         )}
       </div>
