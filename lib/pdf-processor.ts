@@ -158,6 +158,23 @@ export interface ParsedTransaction {
   raw?: string;
 }
 
+export type StatementType = 'ahorros' | 'corrientes';
+
+export interface CurrentAccountTransaction {
+  fechaProc: string;
+  fechaValor: string;
+  description: string;
+  medat: string;
+  lugar: string;
+  sucAge: string;
+  numOp: string;
+  hora: string;
+  origen: string;
+  tipo: string;
+  cargoAbono: number;
+  saldoContable: string;
+}
+
 function detectTextAmountBoundary(lines: string[]): number | null {
   const debeCenters: number[] = [];
   const haberCenters: number[] = [];
@@ -567,6 +584,118 @@ export function cleanAndValidateData(
       totalDebits: undefined,
       totalCredits: undefined,
       balanceValid,
+    },
+  };
+}
+
+function parseCurrentAccountDescription(desc: string): {
+  descripcion: string;
+  medat: string;
+  lugar: string;
+  sucAge: string;
+  numOp: string;
+  hora: string;
+  origen: string;
+  tipo: string;
+} {
+  const tokens = desc
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  // Identify HORA: token like 18:55
+  const iHora = tokens.findIndex((t) => /^\d{1,2}:\d{2}$/.test(t));
+
+  // Identify TIPO: last token digits (e.g. 2713)
+  let iTipo = -1;
+  for (let i = tokens.length - 1; i >= 0; i--) {
+    if (/^\d{1,5}$/.test(tokens[i])) {
+      iTipo = i;
+      break;
+    }
+  }
+
+  const iOrigen = iTipo >= 1 ? iTipo - 1 : -1;
+  const iNumOp = iHora >= 1 ? iHora - 1 : -1;
+  const iLugar = iNumOp >= 1 ? iNumOp - 1 : -1;
+  const iMedat = iLugar >= 1 ? iLugar - 1 : -1;
+
+  // If we can't reliably parse the structured tail, return everything as description.
+  if (iHora < 0 || iTipo < 0 || iNumOp < 0 || iLugar < 0 || iMedat < 0) {
+    return {
+      descripcion: desc,
+      medat: '',
+      lugar: '',
+      sucAge: '',
+      numOp: '',
+      hora: '',
+      origen: '',
+      tipo: '',
+    };
+  }
+
+  return {
+    descripcion: tokens.slice(0, iMedat).join(' ').trim(),
+    medat: tokens[iMedat] || '',
+    lugar: tokens[iLugar] || '',
+    sucAge: '', // OCR often merges/omits this column; keep empty instead of guessing.
+    numOp: tokens[iNumOp] || '',
+    hora: tokens[iHora] || '',
+    origen: iOrigen >= 0 ? tokens[iOrigen] : '',
+    tipo: iTipo >= 0 ? tokens[iTipo] : '',
+  };
+}
+
+export function cleanAndValidateCurrentAccountData(
+  transactions: ParsedTransaction[],
+  fullText: string
+): { transactions: CurrentAccountTransaction[]; accountInfo: any } {
+  if (!transactions || transactions.length === 0) {
+    throw new Error('No se encontraron transacciones en el PDF.');
+  }
+
+  const accountNumber = extractAccountNumber(fullText);
+  const balances = extractBalances(fullText);
+  const reportBalance =
+    typeof balances.final === 'number' ? balances.final : balances.initial;
+
+  const mapped: CurrentAccountTransaction[] = transactions.map((tx) => {
+    const debitNum = parseLatamNumber(tx.debit);
+    const creditNum = parseLatamNumber(tx.credit);
+
+    // "Cargo/Abono" es una sola columna: mostramos el monto absoluto.
+    const cargoAbono =
+      Math.abs(debitNum) > 0.000001
+        ? Math.abs(debitNum)
+        : Math.abs(creditNum);
+
+    const parsed = parseCurrentAccountDescription(tx.description);
+
+    return {
+      fechaProc: tx.fechaProc,
+      fechaValor: tx.fechaValor,
+      description: parsed.descripcion,
+      medat: parsed.medat,
+      lugar: parsed.lugar,
+      sucAge: parsed.sucAge,
+      numOp: parsed.numOp,
+      hora: parsed.hora,
+      origen: parsed.origen,
+      tipo: parsed.tipo,
+      cargoAbono,
+      saldoContable: '',
+    };
+  });
+
+  return {
+    transactions: mapped,
+    accountInfo: {
+      accountNumber,
+      reportBalance,
+      calculatedBalance: reportBalance,
+      totalDebits: undefined,
+      totalCredits: undefined,
+      balanceValid: true,
     },
   };
 }

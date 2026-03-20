@@ -3,7 +3,9 @@
 import React, { useState } from 'react';
 import { Download, ChevronDown, ChevronUp } from 'lucide-react';
 
-interface Transaction {
+type StatementType = 'ahorros' | 'corrientes';
+
+interface SavingsTransaction {
   fechaProc: string;
   fechaValor: string;
   description: string;
@@ -11,8 +13,24 @@ interface Transaction {
   credit: number;
 }
 
+interface CurrentAccountTransaction {
+  fechaProc: string;
+  fechaValor: string;
+  description: string;
+  medat: string;
+  lugar: string;
+  sucAge: string;
+  numOp: string;
+  hora: string;
+  origen: string;
+  tipo: string;
+  cargoAbono: number;
+  saldoContable: string;
+}
+
 interface ResultsData {
-  transactions: Transaction[];
+  statementType?: StatementType;
+  transactions: Array<SavingsTransaction | CurrentAccountTransaction>;
   parserSource?: 'pdfplumber' | 'pdfjs-columns' | 'heuristic-text';
   extractionVersion?: string;
   accountInfo: {
@@ -36,6 +54,7 @@ export default function ResultsPreview({
 }: ResultsPreviewProps) {
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [showDetails, setShowDetails] = useState(false);
+  const statementType: StatementType = data.statementType === 'corrientes' ? 'corrientes' : 'ahorros';
 
   const formatMoney = (value: number) =>
     value.toLocaleString('en-US', {
@@ -163,76 +182,179 @@ export default function ResultsPreview({
       <div className="rounded-lg bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50">
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">
-                  Fecha Proc.
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">
-                  Fecha Valor
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">
-                  Descripcion
-                </th>
-                <th className="px-6 py-3 text-right text-sm font-semibold text-slate-900">
-                  Cargos / Debe
-                </th>
-                <th className="px-6 py-3 text-right text-sm font-semibold text-slate-900">
-                  Abonos / Haber
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {data.transactions
-                .slice(0, PREVIEW_ROW_LIMIT)
-                .map((tx, index) => (
-                <tr
-                  key={index}
-                  className="hover:bg-slate-50 transition-colors cursor-pointer"
-                  onClick={() => toggleRow(index)}
-                >
-                  <td className="px-6 py-4 text-sm text-slate-900">
-                    {tx.fechaProc}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-slate-900">
-                    {tx.fechaValor}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-slate-700">
-                    <div className="flex items-center gap-2">
-                      {expandedRows.has(index) ? (
-                        <ChevronUp className="h-4 w-4 text-slate-400" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4 text-slate-400" />
-                      )}
-                      <span className="truncate">{tx.description}</span>
-                    </div>
-                    {expandedRows.has(index) && (
-                      <p className="mt-2 whitespace-normal text-xs text-slate-500">
-                        {tx.description}
-                      </p>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-right text-sm font-medium text-slate-900">
-                    {tx.debit !== 0 ? (
-                      <span className="text-red-600">
-                        {formatMoney(tx.debit)}
-                      </span>
-                    ) : (
-                      ''
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-right text-sm font-medium text-slate-900">
-                    {tx.credit !== 0 ? (
-                      <span className="text-green-600">
-                        {formatMoney(tx.credit)}
-                      </span>
-                    ) : (
-                      ''
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
+            {statementType === 'corrientes' ? (
+              <>
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50">
+                    {[
+                      'Fecha Proc.',
+                      'Fecha Valor',
+                      'Descripcion',
+                      'Medat*',
+                      'Lugar',
+                      'SUC-AGE',
+                      'NUM OP',
+                      'HORA',
+                      'ORIGEN',
+                      'TIPO',
+                      'Cargo/Abono',
+                      'Saldo Contable',
+                    ].map((h) => (
+                      <th
+                        key={h}
+                        className={`px-6 py-3 text-sm font-semibold ${
+                          h === 'Cargo/Abono' || h === 'Saldo Contable'
+                            ? 'text-right text-slate-900'
+                            : 'text-left text-slate-900'
+                        }`}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {data.transactions
+                    .slice(0, PREVIEW_ROW_LIMIT)
+                    .map((tx, index) => {
+                      const t = tx as CurrentAccountTransaction;
+                      return (
+                        <tr
+                          key={index}
+                          className="hover:bg-slate-50 transition-colors cursor-pointer"
+                          onClick={() => toggleRow(index)}
+                        >
+                          <td className="px-6 py-4 text-sm text-slate-900">
+                            {t.fechaProc}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-900">
+                            {t.fechaValor}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-700">
+                            <div className="flex items-center gap-2">
+                              {expandedRows.has(index) ? (
+                                <ChevronUp className="h-4 w-4 text-slate-400" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4 text-slate-400" />
+                              )}
+                              <span className="truncate">{t.description}</span>
+                            </div>
+                            {expandedRows.has(index) && (
+                              <p className="mt-2 whitespace-normal text-xs text-slate-500">
+                                {t.description}
+                              </p>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-700">
+                            {t.medat}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-700">
+                            {t.lugar}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-700">
+                            {t.sucAge}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-700">
+                            {t.numOp}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-700">
+                            {t.hora}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-700">
+                            {t.origen}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-700">
+                            {t.tipo}
+                          </td>
+                          <td className="px-6 py-4 text-right text-sm font-medium text-slate-900">
+                            {t.cargoAbono !== 0 ? (
+                              <span>{formatMoney(t.cargoAbono)}</span>
+                            ) : (
+                              ''
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-right text-sm text-slate-700">
+                            {t.saldoContable || ''}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </>
+            ) : (
+              <>
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50">
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">
+                      Fecha Proc.
+                    </th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">
+                      Fecha Valor
+                    </th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">
+                      Descripcion
+                    </th>
+                    <th className="px-6 py-3 text-right text-sm font-semibold text-slate-900">
+                      Cargos / Debe
+                    </th>
+                    <th className="px-6 py-3 text-right text-sm font-semibold text-slate-900">
+                      Abonos / Haber
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {(data.transactions as SavingsTransaction[])
+                    .slice(0, PREVIEW_ROW_LIMIT)
+                    .map((tx, index) => (
+                      <tr
+                        key={index}
+                        className="hover:bg-slate-50 transition-colors cursor-pointer"
+                        onClick={() => toggleRow(index)}
+                      >
+                        <td className="px-6 py-4 text-sm text-slate-900">
+                          {tx.fechaProc}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-900">
+                          {tx.fechaValor}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-700">
+                          <div className="flex items-center gap-2">
+                            {expandedRows.has(index) ? (
+                              <ChevronUp className="h-4 w-4 text-slate-400" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4 text-slate-400" />
+                            )}
+                            <span className="truncate">{tx.description}</span>
+                          </div>
+                          {expandedRows.has(index) && (
+                            <p className="mt-2 whitespace-normal text-xs text-slate-500">
+                              {tx.description}
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-right text-sm font-medium text-slate-900">
+                          {tx.debit !== 0 ? (
+                            <span className="text-red-600">
+                              {formatMoney(tx.debit)}
+                            </span>
+                          ) : (
+                            ''
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-right text-sm font-medium text-slate-900">
+                          {tx.credit !== 0 ? (
+                            <span className="text-green-600">
+                              {formatMoney(tx.credit)}
+                            </span>
+                          ) : (
+                            ''
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </>
+            )}
           </table>
         </div>
 

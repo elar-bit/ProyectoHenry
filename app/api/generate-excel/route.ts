@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
 
-interface Transaction {
+type StatementType = 'ahorros' | 'corrientes';
+
+interface SavingsTransaction {
   fechaProc: string;
   fechaValor: string;
   description: string;
@@ -9,8 +11,24 @@ interface Transaction {
   credit: number;
 }
 
+interface CurrentAccountTransaction {
+  fechaProc: string;
+  fechaValor: string;
+  description: string;
+  medat: string;
+  lugar: string;
+  sucAge: string;
+  numOp: string;
+  hora: string;
+  origen: string;
+  tipo: string;
+  cargoAbono: number;
+  saldoContable: string;
+}
+
 interface RequestData {
-  transactions: Transaction[];
+  statementType?: StatementType;
+  transactions: Array<SavingsTransaction | CurrentAccountTransaction>;
   accountInfo: {
     accountNumber?: string;
     reportBalance?: number;
@@ -23,6 +41,8 @@ interface RequestData {
 export async function POST(request: NextRequest) {
   try {
     const data: RequestData = await request.json();
+    const statementType: StatementType =
+      data.statementType === 'corrientes' ? 'corrientes' : 'ahorros';
 
     const formatMoneyForExcel = (value: number) =>
       value.toLocaleString('en-US', {
@@ -41,31 +61,66 @@ export async function POST(request: NextRequest) {
     const workbook = XLSX.utils.book_new();
 
     // Prepare transactions data for Excel
-    const excelData = data.transactions.map((tx) => ({
-      'Fecha Proc.': tx.fechaProc,
-      'Fecha Valor': tx.fechaValor,
-      Descripcion: tx.description,
-      'Cargos / Debe':
-        typeof tx.debit === 'number' && tx.debit !== 0
-          ? formatMoneyForExcel(tx.debit)
-          : '',
-      'Abonos / Haber':
-        typeof tx.credit === 'number' && tx.credit !== 0
-          ? formatMoneyForExcel(tx.credit)
-          : '',
-    }));
+    const excelData =
+      statementType === 'corrientes'
+        ? (data.transactions as CurrentAccountTransaction[]).map((tx) => ({
+            'Fecha Proc.': tx.fechaProc,
+            'Fecha Valor': tx.fechaValor,
+            Descripcion: tx.description,
+            'Medat*': tx.medat,
+            Lugar: tx.lugar,
+            'SUC-AGE': tx.sucAge,
+            'NUM OP': tx.numOp,
+            HORA: tx.hora,
+            ORIGEN: tx.origen,
+            TIPO: tx.tipo,
+            'Cargo/Abono':
+              typeof tx.cargoAbono === 'number' && tx.cargoAbono !== 0
+                ? formatMoneyForExcel(tx.cargoAbono)
+                : '',
+            'Saldo Contable': tx.saldoContable || '',
+          }))
+        : (data.transactions as SavingsTransaction[]).map((tx) => ({
+            'Fecha Proc.': tx.fechaProc,
+            'Fecha Valor': tx.fechaValor,
+            Descripcion: tx.description,
+            'Cargos / Debe':
+              typeof tx.debit === 'number' && tx.debit !== 0
+                ? formatMoneyForExcel(tx.debit)
+                : '',
+            'Abonos / Haber':
+              typeof tx.credit === 'number' && tx.credit !== 0
+                ? formatMoneyForExcel(tx.credit)
+                : '',
+          }));
 
     // Create main sheet
     const worksheet = XLSX.utils.json_to_sheet(excelData);
 
     // Add formatting
-    const wscols = [
-      { wch: 12 }, // Fecha Proc
-      { wch: 12 }, // Fecha Valor
-      { wch: 35 }, // Descripcion
-      { wch: 18 }, // Cargos / Debe
-      { wch: 18 }, // Abonos / Haber
-    ];
+    const wscols =
+      statementType === 'corrientes'
+        ? [
+            { wch: 12 }, // Fecha Proc
+            { wch: 12 }, // Fecha Valor
+            { wch: 35 }, // Descripcion
+            { wch: 12 }, // Medat*
+            { wch: 12 }, // Lugar
+            { wch: 12 }, // SUC-AGE
+            { wch: 12 }, // NUM OP
+            { wch: 10 }, // HORA
+            { wch: 10 }, // ORIGEN
+            { wch: 10 }, // TIPO
+            { wch: 18 }, // Cargo/Abono
+            { wch: 18 }, // Saldo Contable
+          ]
+        : [
+            { wch: 12 }, // Fecha Proc
+            { wch: 12 }, // Fecha Valor
+            { wch: 35 }, // Descripcion
+            { wch: 18 }, // Cargos / Debe
+            { wch: 18 }, // Abonos / Haber
+          ];
     worksheet['!cols'] = wscols;
 
     // Style header row
@@ -90,35 +145,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Format currency columns (Debit, Credit, Balance)
-    for (
-      let row = 2;
-      row <= excelData.length + 1;
-      row++
-    ) {
-      // Debit column (D)
-      const debitCell = worksheet['D' + row];
-      if (debitCell) {
-        if (typeof debitCell.v === 'number') {
-          debitCell.z = '#,##0.00';
+    // Format currency columns
+    for (let row = 2; row <= excelData.length + 1; row++) {
+      if (statementType === 'corrientes') {
+        // Cargo/Abono column (K)
+        const cargoCell = worksheet['K' + row];
+        if (cargoCell) {
+          if (typeof cargoCell.v === 'number') cargoCell.z = '#,##0.00';
+          cargoCell.s = { alignment: { horizontal: 'right' } };
         }
-        debitCell.s = {
-          alignment: { horizontal: 'right' },
-        };
-      }
-
-      // Credit column (E)
-      const creditCell = worksheet['E' + row];
-      if (creditCell) {
-        if (typeof creditCell.v === 'number') {
-          creditCell.z = '#,##0.00';
+      } else {
+        // Debit column (D)
+        const debitCell = worksheet['D' + row];
+        if (debitCell) {
+          if (typeof debitCell.v === 'number') debitCell.z = '#,##0.00';
+          debitCell.s = { alignment: { horizontal: 'right' } };
         }
-        creditCell.s = {
-          alignment: { horizontal: 'right' },
-        };
-      }
 
-      // No existe columna de Saldo en el Excel (se respeta el PDF).
+        // Credit column (E)
+        const creditCell = worksheet['E' + row];
+        if (creditCell) {
+          if (typeof creditCell.v === 'number') creditCell.z = '#,##0.00';
+          creditCell.s = { alignment: { horizontal: 'right' } };
+        }
+      }
     }
 
     // Create summary sheet
