@@ -58,36 +58,32 @@ export async function POST(request: NextRequest) {
       const searchFrom = idxCorriente >= 0 ? idxCorriente : 0;
 
       try {
-        // El PDF puede tener múltiples ocurrencias de "ACTIVIDADES".
-        // Probamos desde cada una y usamos la primera que realmente genere movimientos.
-        let raw: ReturnType<typeof parseTransactions> | null = null;
-        let chosen: number | null = null;
+        // Solución robusta:
+        // - Parseamos TODO el PDF para no perder filas finales (ej. 31-01).
+        // - Luego filtramos para que el resultado empiece en la sección de "ACTIVIDADES"
+        //   de "ESTADO DE CUENTA CORRIENTE".
+        const rawAll = parseTransactions(text);
 
-        let i = searchFrom;
-        while (true) {
-          const idxActividades = upper.indexOf('ACTIVIDADES', i);
-          if (idxActividades < 0) break;
+        const idxActividades = upper.indexOf('ACTIVIDADES', searchFrom);
+        const tail = idxActividades >= 0 ? text.slice(idxActividades) : '';
+        const ddmmMatch = tail.match(/\b(\d{1,2})-(\d{1,2})\b/);
 
-          const candidateText = text.slice(idxActividades);
-          try {
-            const candidateRaw = parseTransactions(candidateText);
-            if (candidateRaw && candidateRaw.length > 0) {
-              raw = candidateRaw;
-              chosen = idxActividades;
-              break;
-            }
-          } catch {
-            // Try next ACTIVIDADES occurrence.
-          }
-
-          i = idxActividades + 'ACTIVIDADES'.length;
-        }
-
-        if (!raw || raw.length === 0) {
-          // As a last resort, use full text (should still throw if empty).
-          raw = parseTransactions(text);
-          chosen = searchFrom;
-        }
+        const raw =
+          ddmmMatch && ddmmMatch[1] && ddmmMatch[2]
+            ? (() => {
+                const dd = parseInt(ddmmMatch[1], 10);
+                const mm = parseInt(ddmmMatch[2], 10);
+                return rawAll.filter((tx) => {
+                  const m = tx.fechaProc.match(/^(\d{1,2})-(\d{1,2})$/);
+                  // Si el OCR no logra un "DD-MM" limpio, no descartamos la fila;
+                  // el extractor debe conservar esas filas (especialmente al final de página).
+                  if (!m) return true;
+                  const d = parseInt(m[1], 10);
+                  const mon = parseInt(m[2], 10);
+                  return mon === mm && d >= dd;
+                });
+              })()
+            : rawAll;
 
         const result = cleanAndValidateCurrentAccountData(raw, text);
 
@@ -113,7 +109,11 @@ export async function POST(request: NextRequest) {
           statementType,
           parserSource: 'heuristic-text',
           extractionVersion: 'current-12col-from-actividades',
-          parserDebug: { chosenActividadesIndex: chosen },
+          parserDebug: {
+            idxCorriente,
+            idxActividades,
+            ddmmThreshold: ddmmMatch?.[0] ?? null,
+          },
         });
       } catch (e) {
         return NextResponse.json(
