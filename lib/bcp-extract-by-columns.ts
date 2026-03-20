@@ -51,37 +51,6 @@ function parseFechaTokenFromSplit(dayToken: string, monthToken: string) {
   return `${String(dayToken).padStart(2, '0')}${monthToken.trim().toUpperCase()}`;
 }
 
-function extractFechaTokens(rowItems: Array<any>) {
-  const sorted = [...rowItems].sort((a, b) => a.x - b.x);
-  const out: string[] = [];
-  let maxFechaX = -Infinity;
-
-  for (let i = 0; i < sorted.length; i++) {
-    const str = (sorted[i].str ?? '').toString().trim();
-    const combined = parseFechaTokenFromCombined(str);
-    if (combined) {
-      out.push(combined);
-      maxFechaX = Math.max(maxFechaX, sorted[i].x);
-      continue;
-    }
-
-    // Split token form: "02" + "FEB"
-    const dayOk = /^\d{1,2}$/.test(str);
-    if (!dayOk) continue;
-    const next = sorted[i + 1];
-    if (!next) continue;
-    const nextStr = (next.str ?? '').toString().trim();
-    const split = parseFechaTokenFromSplit(str, nextStr);
-    if (split) {
-      out.push(split);
-      maxFechaX = Math.max(maxFechaX, sorted[i].x, next!.x);
-      i++; // consume next token
-    }
-  }
-
-  return { tokens: out, maxX: maxFechaX };
-}
-
 export async function extractBCPByColumns(
   pdfBuffer: ArrayBuffer
 ): Promise<ExtractBCPResult> {
@@ -99,7 +68,10 @@ export async function extractBCPByColumns(
     const textContent = await page.getTextContent();
     const items = textContent.items as Array<any>;
 
-    // Determine column anchors for Debe/Haber using header labels.
+    // Determine column anchors from header labels (layout-based parsing).
+    let procAnchorX: number | null = null;
+    let valorAnchorX: number | null = null;
+    let descAnchorX: number | null = null;
     let debitAnchorX: number | null = null;
     let creditAnchorX: number | null = null;
 
@@ -109,6 +81,15 @@ export async function extractBCPByColumns(
       const x = transform?.[4];
       if (typeof x !== 'number') continue;
       const upper = str.toUpperCase();
+      if (!procAnchorX && (upper.includes('PROC') || upper === 'PROC.')) {
+        procAnchorX = x;
+      }
+      if (!valorAnchorX && upper.includes('VALOR')) {
+        valorAnchorX = x;
+      }
+      if (!descAnchorX && upper.includes('DESCRIPCION')) {
+        descAnchorX = x;
+      }
       if (!debitAnchorX && (upper.includes('DEBE') || upper.includes('CARGOS'))) {
         debitAnchorX = x;
       }
@@ -117,10 +98,49 @@ export async function extractBCPByColumns(
       }
     }
 
-    // If we can't identify the anchors, skip this page.
-    if (debitAnchorX === null || creditAnchorX === null) continue;
+    // Need at least 5 anchors to build column boundaries.
+    if (
+      procAnchorX === null ||
+      valorAnchorX === null ||
+      descAnchorX === null ||
+      debitAnchorX === null ||
+      creditAnchorX === null
+    ) {
+      continue;
+    }
 
-    const colTol = 20; // x tolerance in PDF units
+    // Column boundaries = midpoints between adjacent header anchors.
+    // This behaves like the vertical separators in the statement layout.
+    const b1 = -Infinity;
+    const b2 = (procAnchorX + valorAnchorX) / 2;
+    const b3 = (valorAnchorX + descAnchorX) / 2;
+    const b4 = (descAnchorX + debitAnchorX) / 2;
+    const b5 = (debitAnchorX + creditAnchorX) / 2;
+    const b6 = Infinity;
+
+    const colForX = (x: number): 1 | 2 | 3 | 4 | 5 => {
+      if (x >= b1 && x < b2) return 1;
+      if (x >= b2 && x < b3) return 2;
+      if (x >= b3 && x < b4) return 3;
+      if (x >= b4 && x < b5) return 4;
+      return 5;
+    };
+
+    const parseFechaFromColTokens = (tokens: string[]): string | null => {
+      if (!tokens.length) return null;
+      // Prefer combined token like 02FEB
+      for (const t of tokens) {
+        const combined = parseFechaTokenFromCombined(t);
+        if (combined) return combined;
+      }
+      // Fallback split token: "02" + "FEB"
+      for (let i = 0; i < tokens.length - 1; i++) {
+        const split = parseFechaTokenFromSplit(tokens[i], tokens[i + 1]);
+        if (split) return split;
+      }
+      return null;
+    };
+
     const rowTol = 6; // y tolerance in PDF units
 
     // Cluster items into rows by y position.
@@ -152,55 +172,55 @@ export async function extractBCPByColumns(
     for (const r of rows) {
       const rowItems = r.items;
 
-      // Find amounts in the Debe and Haber column ranges.
-      const debitCandidates = rowItems
-        .filter((it) => Math.abs(it.x - debitAnchorX!) <= colTol && isAmountToken(it.str))
-        .sort((a, b) => a.x - b.x);
-      const creditCandidates = rowItems
-        .filter((it) => Math.abs(it.x - creditAnchorX!) <= colTol && isAmountToken(it.str))
-        .sort((a, b) => a.x - b.x);
-
-      if (debitCandidates.length === 0 && creditCandidates.length === 0) continue;
-
-      // Extract fechaProc/fechaValor as the first two fecha tokens from the left.
-      const { tokens: fechaTokens, maxX: maxFechaX } = extractFechaTokens(
-        rowItems
-      );
-      if (fechaTokens.length < 1) continue;
-
-      const fechaProc = fechaTokens[0];
-      const fechaValor = fechaTokens[1] ?? fechaTokens[0];
-
-      // Amounts: keep raw tokens from PDF (clean later by parser/formatter).
-      const debit = debitCandidates.length > 0 ? debitCandidates[debitCandidates.length - 1].str : '0';
-      const credit = creditCandidates.length > 0 ? creditCandidates[creditCandidates.length - 1].str : '0';
-
-      // Description: join tokens excluding fechas and excluding amount tokens near anchors.
-      const dateTokensSet = new Set(fechaTokens);
-      const debitXSet = new Set(debitCandidates.map((c) => c.str));
-      const creditXSet = new Set(creditCandidates.map((c) => c.str));
-
-      const descTokens = rowItems
+      const col1 = rowItems
+        .filter((it) => colForX(it.x) === 1)
         .sort((a, b) => a.x - b.x)
-        .filter((it) => {
-          const upper = it.str.toUpperCase();
-          // Remove fecha tokens area (day/month tokens sometimes come split)
-          if (it.x <= maxFechaX + 0.5) return false;
-          if (dateTokensSet.has(it.str)) return false;
-          // Filter out the amount tokens themselves (by matching numeric candidates)
-          if (isAmountToken(it.str) && (debitXSet.has(it.str) || creditXSet.has(it.str))) return false;
-          // Avoid header/footer noise
-          if (upper.includes('SALDO') && upper.length <= 8) return false;
-          if (upper.includes('MENSAJE') || upper.includes('CLIENTE')) return false;
-          return true;
-        })
-        .map((it) => it.str.trim())
+        .map((it) => (it.str ?? '').toString().trim())
         .filter(Boolean);
+      const col2 = rowItems
+        .filter((it) => colForX(it.x) === 2)
+        .sort((a, b) => a.x - b.x)
+        .map((it) => (it.str ?? '').toString().trim())
+        .filter(Boolean);
+      const col3Items = rowItems
+        .filter((it) => colForX(it.x) === 3)
+        .sort((a, b) => a.x - b.x);
+      const col4Items = rowItems
+        .filter((it) => colForX(it.x) === 4)
+        .sort((a, b) => a.x - b.x);
+      const col5Items = rowItems
+        .filter((it) => colForX(it.x) === 5)
+        .sort((a, b) => a.x - b.x);
 
-      const description = descTokens.join(' ');
+      const fechaProc = parseFechaFromColTokens(col1);
+      const fechaValor = parseFechaFromColTokens(col2) ?? fechaProc;
+      if (!fechaProc) continue;
+
+      const debitCandidates = col4Items
+        .map((it) => (it.str ?? '').toString().trim())
+        .filter((s) => s.includes('.') && isAmountToken(s));
+      const creditCandidates = col5Items
+        .map((it) => (it.str ?? '').toString().trim())
+        .filter((s) => s.includes('.') && isAmountToken(s));
+
+      // Description comes from the description column only.
+      const description = col3Items
+        .map((it) => (it.str ?? '').toString().trim())
+        .filter(Boolean)
+        .join(' ');
+
+      const debit =
+        debitCandidates.length > 0
+          ? debitCandidates[debitCandidates.length - 1]
+          : '0';
+      const credit =
+        creditCandidates.length > 0
+          ? creditCandidates[creditCandidates.length - 1]
+          : '0';
 
       // Skip the row if it looks like header noise
       if (!description.trim()) continue;
+      if (debit === '0' && credit === '0') continue;
 
       allTransactions.push({
         fechaProc,

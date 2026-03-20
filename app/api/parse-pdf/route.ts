@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     } catch (e) {
       transactions = [];
     }
-    if (!transactions || transactions.length < 5) {
+    if (!transactions || transactions.length === 0) {
       transactions = parseTransactions(text);
     }
 
