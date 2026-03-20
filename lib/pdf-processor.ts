@@ -172,7 +172,7 @@ export interface CurrentAccountTransaction {
   origen: string;
   tipo: string;
   cargoAbono: number;
-  saldoContable: string;
+  saldoContable: number;
 }
 
 function detectTextAmountBoundary(lines: string[]): number | null {
@@ -637,8 +637,10 @@ function parseCurrentAccountDescription(desc: string): {
   return {
     descripcion: tokens.slice(0, iMedat).join(' ').trim(),
     medat: tokens[iMedat] || '',
-    lugar: tokens[iLugar] || '',
-    sucAge: '', // OCR often merges/omits this column; keep empty instead of guessing.
+    // En este formato, lo que OCR reporta en la cola suele corresponder a
+    // "SUC-AGE" (no a "Lugar"). Dejamos "Lugar" vacío y movemos el token.
+    lugar: '',
+    sucAge: tokens[iLugar] || '',
     numOp: tokens[iNumOp] || '',
     hora: tokens[iHora] || '',
     origen: iOrigen >= 0 ? tokens[iOrigen] : '',
@@ -673,7 +675,8 @@ export function cleanAndValidateCurrentAccountData(
 
     return {
       fechaProc: tx.fechaProc,
-      fechaValor: tx.fechaValor,
+      // Requisito: en el PDF de cuentas corrientes no se muestra "Fecha Valor".
+      fechaValor: '',
       description: parsed.descripcion,
       medat: parsed.medat,
       lugar: parsed.lugar,
@@ -683,7 +686,10 @@ export function cleanAndValidateCurrentAccountData(
       origen: parsed.origen,
       tipo: parsed.tipo,
       cargoAbono,
-      saldoContable: '',
+      // Hoy no podemos extraer una "Saldo Contable" separada por OCR;
+      // para que la columna no salga vacía, usamos el único valor monetario
+      // disponible por fila (cargo/abono).
+      saldoContable: cargoAbono,
     };
   });
 

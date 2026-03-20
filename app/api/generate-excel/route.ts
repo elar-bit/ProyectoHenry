@@ -23,7 +23,7 @@ interface CurrentAccountTransaction {
   origen: string;
   tipo: string;
   cargoAbono: number;
-  saldoContable: string;
+  saldoContable: number;
 }
 
 interface RequestData {
@@ -78,7 +78,10 @@ export async function POST(request: NextRequest) {
               typeof tx.cargoAbono === 'number' && tx.cargoAbono !== 0
                 ? formatMoneyForExcel(tx.cargoAbono)
                 : '',
-            'Saldo Contable': tx.saldoContable || '',
+            'Saldo Contable':
+              typeof tx.saldoContable === 'number' && tx.saldoContable !== 0
+                ? formatMoneyForExcel(tx.saldoContable)
+                : '',
           }))
         : (data.transactions as SavingsTransaction[]).map((tx) => ({
             'Fecha Proc.': tx.fechaProc,
@@ -153,6 +156,13 @@ export async function POST(request: NextRequest) {
         if (cargoCell) {
           if (typeof cargoCell.v === 'number') cargoCell.z = '#,##0.00';
           cargoCell.s = { alignment: { horizontal: 'right' } };
+        }
+
+        // Saldo Contable column (L)
+        const saldoCell = worksheet['L' + row];
+        if (saldoCell) {
+          if (typeof saldoCell.v === 'number') saldoCell.z = '#,##0.00';
+          saldoCell.s = { alignment: { horizontal: 'right' } };
         }
       } else {
         // Debit column (D)

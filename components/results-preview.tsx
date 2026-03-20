@@ -25,7 +25,7 @@ interface CurrentAccountTransaction {
   origen: string;
   tipo: string;
   cargoAbono: number;
-  saldoContable: string;
+  saldoContable: number;
 }
 
 interface ResultsData {
@@ -274,7 +274,9 @@ export default function ResultsPreview({
                             )}
                           </td>
                           <td className="px-6 py-4 text-right text-sm text-slate-700">
-                            {t.saldoContable || ''}
+                            {t.saldoContable !== 0
+                              ? formatMoney(t.saldoContable)
+                              : ''}
                           </td>
                         </tr>
                       );
