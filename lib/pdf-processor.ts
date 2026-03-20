@@ -354,7 +354,10 @@ export function parseTransactions(text: string): ParsedTransaction[] {
     const inferredYear = yearMatch ? parseInt(yearMatch[3], 10) : undefined;
 
     if (inferredYear !== undefined) {
-      const dmRegex = /^(\d{1,2})-(\d{1,2})\s+(.+)$/;
+      // Soporta:
+      // - "02-01 Descripcion ... 23.00"
+      // - "02-01" (fecha sola) y la descripcion/monto en la línea siguiente (OCR)
+      const dmRegex = /^(\d{1,2})-(\d{1,2})(?:\s+(.+))?$/;
 
       for (let li = 0; li < lines.length; li++) {
         const originalLine = lines[li];
@@ -366,7 +369,17 @@ export function parseTransactions(text: string): ParsedTransaction[] {
 
         const dayNum = parseInt(dmMatch[1], 10);
         const monthNum = parseInt(dmMatch[2], 10);
-        const rest = dmMatch[3];
+        let rest = dmMatch[3] ?? '';
+
+        // Si el OCR dejó la fecha sola en la línea, intentamos tomar la
+        // línea siguiente como "rest" (descripcion + monto).
+        if (!rest) {
+          const nextLine = lines[li + 1]?.trim();
+          if (nextLine && !dmRegex.test(nextLine)) {
+            rest = nextLine;
+            li++; // Consumimos la siguiente línea para este movimiento.
+          }
+        }
 
         if (Number.isNaN(dayNum) || Number.isNaN(monthNum)) continue;
         if (monthNum < 1 || monthNum > 12) continue;
@@ -375,11 +388,27 @@ export function parseTransactions(text: string): ParsedTransaction[] {
           monthNum
         ).padStart(2, '0')}`;
 
+        const amountRegex = /((?:\d[\d.,]*\d|\.\d+)(?:-)?)(?:\s*)$/;
+
         // Amount = last numeric token in the line (can be "3.50-" for negative)
         // Amount can appear as "23.00" or ".85-" depending on OCR.
-        const amountMatch = rest.match(
-          /((?:\d[\d.,]*\d|\.\d+)(?:-)?)(?:\s*)$/
-        );
+        let amountMatch = rest.match(amountRegex);
+
+        // Si no encontramos el monto en la línea "rest", intentamos anexar una
+        // línea más (caso final de página donde el OCR separa fecha/desc/monto).
+        if (!amountMatch) {
+          const nextLine2 = lines[li + 1]?.trim();
+          if (nextLine2 && !dmRegex.test(nextLine2)) {
+            const combined = `${rest} ${nextLine2}`.trim();
+            const maybeAmount = combined.match(amountRegex);
+            if (maybeAmount) {
+              rest = combined;
+              amountMatch = maybeAmount;
+              li++; // Consumimos la línea adicional para este movimiento.
+            }
+          }
+        }
+
         if (!amountMatch) continue;
 
         const amountTokenRaw = amountMatch[1].trim();
