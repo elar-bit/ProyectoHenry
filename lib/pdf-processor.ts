@@ -364,6 +364,23 @@ export function parseTransactions(text: string): ParsedTransaction[] {
       const dmRegex =
         /^(?:\*)?\s*(\d{1,2})\s*-\s*(\d{1,2})(?:\*)?(?:\s+(.+))?$/;
 
+      // Cuando el OCR imprime muchas fechas consecutivas (ej. "31-01" repetido)
+      // y los montos aparecen después como líneas "solo número", necesitamos
+      // asignar esos montos secuencialmente a cada fecha.
+      const moneyOnlyLineRegex =
+        /^-?(?:\.\d{1,2}|\d{1,3}(?:,\d{3})*|\d+)(?:\.\d{2})-?$/;
+      const moneyOnlyTokens: Array<{ idx: number; token: string }> = [];
+      for (let i = 0; i < lines.length; i++) {
+        const t = lines[i]?.trim() ?? '';
+        if (!t) continue;
+        if (dmRegex.test(t)) continue;
+        if (moneyOnlyLineRegex.test(t)) {
+          // Avoid selecting "saldo" lists too far away; we pick by window later.
+          moneyOnlyTokens.push({ idx: i, token: t });
+        }
+      }
+      let moneyOnlyPtr = 0;
+
       for (let li = 0; li < lines.length; li++) {
         const originalLine = lines[li];
         const line = originalLine.trim();
@@ -398,6 +415,7 @@ export function parseTransactions(text: string): ParsedTransaction[] {
         // Amount = last numeric token in the line (can be "3.50-" for negative)
         // Amount can appear as "23.00" or ".85-" depending on OCR.
         let amountMatch = rest.match(amountRegex);
+        let amountFromRest = !!amountMatch;
 
         // Si no encontramos el monto en la línea "rest", intentamos anexar una
         // línea más (caso final de página donde el OCR separa fecha/desc/monto).
@@ -427,14 +445,37 @@ export function parseTransactions(text: string): ParsedTransaction[] {
           }
         }
 
-        if (!amountMatch) continue;
+        let amountTokenRaw: string | null = null;
+        if (amountMatch) {
+          amountFromRest = true;
+          amountTokenRaw = amountMatch[1].trim();
+        } else {
+          // Fallback: buscar el próximo monto "solo número" dentro de una ventana.
+          // Esto recupera filas cuando el OCR separa fecha y monto en líneas distintas
+          // y/o deja múltiples fechas consecutivas antes del monto.
+          while (
+            moneyOnlyPtr < moneyOnlyTokens.length &&
+            moneyOnlyTokens[moneyOnlyPtr].idx <= li
+          ) {
+            moneyOnlyPtr++;
+          }
+          const candidate = moneyOnlyTokens[moneyOnlyPtr];
+          if (candidate && candidate.idx > li && candidate.idx <= li + 40) {
+            amountFromRest = false;
+            amountTokenRaw = candidate.token;
+            moneyOnlyPtr++;
+          }
+        }
 
-        const amountTokenRaw = amountMatch[1].trim();
+        if (!amountTokenRaw) continue;
+
         const amountTokenClean = amountTokenRaw.replace(/-$/, '');
         const amountValue = parseLatamNumber(amountTokenRaw);
         if (Number.isNaN(amountValue)) continue;
 
-        const descPart = rest.slice(0, rest.length - amountTokenRaw.length).trim();
+        const descPart = amountFromRest
+          ? rest.slice(0, rest.length - amountTokenRaw.length).trim()
+          : rest.trim();
         const descUpper = descPart.toUpperCase();
 
         const looksCredit =
