@@ -8,6 +8,7 @@ import {
 } from '@/lib/pdf-processor';
 import { extractBCPByColumns } from '@/lib/bcp-extract-by-columns';
 import { extractWithPdfPlumber } from '@/lib/extract-pdfplumber';
+import { extractCorrientesSaldoContableByRows } from '@/lib/corrientes-extract-saldo';
 
 export async function POST(request: NextRequest) {
   try {
@@ -89,6 +90,23 @@ export async function POST(request: NextRequest) {
         }
 
         const result = cleanAndValidateCurrentAccountData(raw, text);
+
+        // Reemplazar "Saldo Contable" por valores extraídos por coordenadas
+        // (el monto más a la derecha en cada fila).
+        try {
+          const saldoTokens = await extractCorrientesSaldoContableByRows(
+            makeArrayBuffer(),
+            result.transactions.length
+          );
+          for (let i = 0; i < result.transactions.length; i++) {
+            if (typeof saldoTokens[i] === 'number') {
+              result.transactions[i].saldoContable =
+                saldoTokens[i] ?? 0;
+            }
+          }
+        } catch {
+          // si falla la extracción de saldo por coordenadas, se mantiene el valor actual (0).
+        }
 
         return NextResponse.json({
           ...result,
