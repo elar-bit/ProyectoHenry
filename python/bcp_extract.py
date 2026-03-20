@@ -371,11 +371,10 @@ def extract_pdf(buffer: bytes) -> list[dict[str, Any]]:
             else:
                 last_geom = (lo, hi, boundary)
 
-            table_rows = try_tables_first(page)
-            if len(table_rows) >= 3:
-                page_tx = table_rows
-            else:
-                page_tx = parse_page_lines(page, lo, hi, boundary)
+            # Evitar dependencia de grillas detectadas automáticamente:
+            # en algunos estados `find_tables()` desplaza celdas y mezcla DEBE/HABER.
+            # Fuente única de verdad: posición X del monto respecto a la frontera.
+            page_tx = parse_page_lines(page, lo, hi, boundary)
 
             out_all.extend(page_tx)
 
