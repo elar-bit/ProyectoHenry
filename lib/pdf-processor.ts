@@ -2,21 +2,66 @@
 function parseLatamNumber(value: string): number {
   if (!value || typeof value !== 'string') return 0;
 
-  // Remove spaces
   value = value.trim();
 
-  // If it has comma, it's decimal separator in LATAM format
-  if (value.includes(',')) {
-    // Replace thousands separator (.) with nothing
-    value = value.replace(/\./g, '');
-    // Replace decimal separator (,) with .
-    value = value.replace(',', '.');
-  } else if (value.includes('.')) {
-    // If only dots, could be thousands separator
-    // Keep as is if it looks like 1.234 (thousands)
+  // Common OCR/statement placeholders
+  if (
+    value === '-' ||
+    value === '—' ||
+    value === '–' ||
+    /^n\/a$/i.test(value) ||
+    /^na$/i.test(value)
+  ) {
+    return 0;
   }
 
-  return parseFloat(value) || 0;
+  // Accounting negatives: (1.234,56)
+  const isNegativeAccounting = value.startsWith('(') && value.endsWith(')');
+  value = value.replace(/[()]/g, '');
+
+  // Remove currency symbols/letters, keep digits and separators
+  value = value.replace(/S\//gi, '');
+  value = value.replace(/[$€£]/g, '');
+  value = value.replace(/[^\d.,\-\s]/g, '');
+
+  // Remove spaces
+  value = value.replace(/\s+/g, '');
+
+  const lastComma = value.lastIndexOf(',');
+  const lastDot = value.lastIndexOf('.');
+
+  // Both ',' and '.' exist -> decide decimal separator by the last one
+  if (lastComma !== -1 && lastDot !== -1) {
+    if (lastComma > lastDot) {
+      // LATAM: 1.234,56
+      value = value.replace(/\./g, '').replace(',', '.');
+    } else {
+      // US-ish: 1,234.56
+      value = value.replace(/,/g, '');
+    }
+  } else if (lastComma !== -1) {
+    // Only ',' exists -> maybe decimal or thousands
+    const decimals = value.length - lastComma - 1;
+    if (decimals === 3) {
+      // 1,234 (thousands)
+      value = value.replace(/,/g, '');
+    } else {
+      // 1.234,56 (decimal comma) or 123,45
+      value = value.replace(/\./g, '').replace(',', '.');
+    }
+  } else if (lastDot !== -1) {
+    // Only '.' exists -> maybe decimal or thousands
+    const decimals = value.length - lastDot - 1;
+    if (decimals === 3) {
+      // 1.234 (thousands)
+      value = value.replace(/\./g, '');
+    }
+    // else keep as-is (decimal dot)
+  }
+
+  const num = parseFloat(value);
+  if (Number.isNaN(num)) return 0;
+  return isNegativeAccounting ? -num : num;
 }
 
 // Remove OCR noise and common header patterns
@@ -96,9 +141,15 @@ export function parseTransactions(text: string): ParsedTransaction[] {
     const line = lines[i].trim();
 
     // Transaction line pattern: DATE DESCRIPTION DEBIT CREDIT BALANCE
-    // Date format: DD/MM/YYYY or DD-MM-YYYY
-    const transactionMatch = line.match(
-      /^(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})\s+(.+?)\s+([\d.,\s]+)\s+([\d.,\s]+)\s+([\d.,\s]+)\s*$/
+    // Date format: DD/MM/YYYY, DD-MM-YYYY or DD.MM.YYYY
+    const normalizedLine = line
+      // Common currency tokens that may appear glued to numbers
+      .replace(/S\//gi, '')
+      .replace(/[$€£]/g, '')
+      .replace(/\b(USD|PEN|MXN|DOLARES|SOLES)\b/gi, '');
+
+    const transactionMatch = normalizedLine.match(
+      /^(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4})\s+(.+?)\s+([\d.,\s\-\(\)]+)\s+([\d.,\s\-\(\)]+)\s+([\d.,\s\-\(\)]+)\s*$/
     );
 
     if (transactionMatch) {
@@ -125,12 +176,12 @@ export function parseTransactions(text: string): ParsedTransaction[] {
       let j = i + 1;
       while (
         j < lines.length &&
-        !lines[j].trim().match(/^\d{1,2}[\/\-]/)
+        !lines[j].trim().match(/^\d{1,2}[\/\-\.]/)
       ) {
         const nextLine = lines[j].trim();
         if (
           nextLine &&
-          !nextLine.match(/^[\d.,\s]+$/) // Skip lines that are just numbers
+          !nextLine.match(/^[\d.,\s\-\(\)]+$/) // Skip lines that are just numbers
         ) {
           fullDescription += ' ' + nextLine;
         }
@@ -163,7 +214,7 @@ export function parseTransactions(text: string): ParsedTransaction[] {
 
 // Validate date format
 function isValidDate(dateStr: string): boolean {
-  const dateMatch = dateStr.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  const dateMatch = dateStr.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
   if (!dateMatch) return false;
 
   const [, dayStr, monthStr, yearStr] = dateMatch;
