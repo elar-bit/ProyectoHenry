@@ -10,6 +10,10 @@ function isDateProcToken(s: string) {
   return /^\d{1,2}-\d{1,2}$/.test(s.trim());
 }
 
+function isTimeToken(s: string) {
+  return /^\d{1,2}:\d{2}$/.test(s.trim());
+}
+
 function isMoneyToken(s: string) {
   const t = s.trim();
   // Examples: 23.00, 5,343.68, 1.00-, 1,000.00-
@@ -99,20 +103,31 @@ export async function extractCorrientesSaldoContableByRows(
     const rows = groupRows(tokens, 4);
 
     for (const row of rows) {
-      const dateTok = row.items.find((t) => isDateProcToken(t.str));
-      if (!dateTok) continue;
+      const hasDate = row.items.some((t) => isDateProcToken(t.str));
+      const hasTime = row.items.some((t) => isTimeToken(t.str));
+      const upperRow = row.items.map((t) => t.str.toUpperCase()).join(' ');
+      const hasKeyword =
+        /(PAGO|IMPUESTO|DEPOSITO|RET\.?|TRAN\.?|ACTIVIDAD|OPERACI|OPE\.?)/i.test(
+          upperRow
+        );
 
       const moneyTokens = row.items
         .filter((t) => isMoneyToken(t.str))
         .sort((a, b) => a.x - b.x);
       if (moneyTokens.length === 0) continue;
 
+      // Aunque el OCR no incluya fecha en esa fila, si contiene hora o
+      // keywords típicas, igual consideramos que es parte de una transacción.
+      if (!hasDate && !hasTime && !hasKeyword) continue;
+
       const right = moneyTokens[moneyTokens.length - 1];
+
       out.push({
         y: row.y,
-        date: dateTok.str,
+        date: '', // no requerido para el mapping por índice
         saldo: parseMoneyToken(right.str),
       });
+
       if (expectedRows && out.length >= expectedRows) break;
     }
 
@@ -120,6 +135,6 @@ export async function extractCorrientesSaldoContableByRows(
   }
 
   // out already in top->bottom order due to row sorting.
-  return out.map((t) => t.saldo);
+  return out.slice(0, expectedRows ?? out.length).map((t) => t.saldo);
 }
 
