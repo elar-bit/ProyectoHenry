@@ -32,8 +32,32 @@ export default function Home() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'No se pudo analizar el PDF');
+        const errorData = await response.json().catch(() => null);
+
+        const truncate = (s: unknown, n = 180) => {
+          if (typeof s !== 'string') return '';
+          if (s.length <= n) return s;
+          return s.slice(0, n) + '...';
+        };
+
+        const msgParts: string[] = [];
+        if (errorData?.error) msgParts.push(String(errorData.error));
+        if (errorData?.parserSource)
+          msgParts.push(`Motor: ${String(errorData.parserSource)}`);
+        if (errorData?.extractionVersion)
+          msgParts.push(`Version: ${String(errorData.extractionVersion)}`);
+
+        if (errorData?.parserDebug) {
+          const { pdfjsError, plumberError } = errorData.parserDebug;
+          if (pdfjsError) msgParts.push(`pdfjsError: ${truncate(pdfjsError)}`);
+          if (plumberError)
+            msgParts.push(`plumberError: ${truncate(plumberError)}`);
+        }
+
+        throw new Error(
+          msgParts.filter(Boolean).join(' | ') ||
+            'No se pudo analizar el PDF'
+        );
       }
 
       const data = await response.json();
