@@ -100,7 +100,15 @@ export async function extractBCPByColumns(
   let workerUrl: string | undefined;
   try {
     // Resolve from this module, independent of runtime cwd.
-    const req = createRequire(import.meta.url);
+    // In some Next.js server builds this file may be CJS where `import.meta`
+    // isn't usable; fallback to `__filename`.
+    let req: NodeRequire;
+    try {
+      req = createRequire(import.meta.url);
+    } catch {
+      // eslint-disable-next-line no-undef
+      req = createRequire(__filename);
+    }
     const workerPath = req.resolve(
       'pdfjs-dist/legacy/build/pdf.worker.mjs'
     ) as string;
