@@ -357,7 +357,11 @@ export function parseTransactions(text: string): ParsedTransaction[] {
       // Soporta:
       // - "02-01 Descripcion ... 23.00"
       // - "02-01" (fecha sola) y la descripcion/monto en la línea siguiente (OCR)
-      const dmRegex = /^(\d{1,2})-(\d{1,2})(?:\s+(.+))?$/;
+      // OCR a veces imprime el formato DD-MM con espacios alrededor del guion
+      // o con caracteres pegados (ej. "31-01*", "*31 -01", "31 - 01 TRAN...").
+      // Esta regex intenta ser tolerante sin perder el anclaje al inicio.
+      const dmRegex =
+        /^(?:\D*)?(\d{1,2})\s*-\s*(\d{1,2})(?:\D*)?(?:\s+(.+))?$/;
 
       for (let li = 0; li < lines.length; li++) {
         const originalLine = lines[li];
