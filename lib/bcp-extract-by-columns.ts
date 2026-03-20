@@ -1,5 +1,6 @@
 import type { ParsedTransaction } from '@/lib/pdf-processor';
 import { createRequire } from 'module';
+import { pathToFileURL } from 'url';
 
 type ExtractBCPResult = ParsedTransaction[];
 
@@ -96,15 +97,16 @@ export async function extractBCPByColumns(
   const pdfjsLib: any = await import('pdfjs-dist/legacy/build/pdf.mjs');
   // In serverless/Next chunks, resolving worker paths via `eval('require')`
   // can fail. Use createRequire so `pdfjs-dist` can load the worker file.
-  let workerPath: string | undefined;
+  let workerUrl: string | undefined;
   try {
     const req = createRequire(`${process.cwd()}/package.json`);
     workerPath = req.resolve(
       'pdfjs-dist/legacy/build/pdf.worker.mjs'
     ) as string;
+    workerUrl = pathToFileURL(workerPath).toString();
     // pdfjs fake-worker uses `workerSrc` as an import specifier.
-    // Provide an absolute filesystem path.
-    pdfjsLib.GlobalWorkerOptions.workerSrc = workerPath;
+    // Use file:// URL so Node ESM can import it.
+    pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
   } catch {
     // If resolution fails, pdfjs will fall back to its own defaults.
   }
@@ -117,7 +119,7 @@ export async function extractBCPByColumns(
       disableWorker: true,
       isEvalSupported: false,
       useWorkerFetch: false,
-      ...(workerPath ? { workerSrc: workerPath } : {}),
+      ...(workerUrl ? { workerSrc: workerUrl } : {}),
     })
     .promise;
 
