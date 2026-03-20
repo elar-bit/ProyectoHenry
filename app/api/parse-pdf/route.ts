@@ -55,12 +55,39 @@ export async function POST(request: NextRequest) {
       const upper = text.toUpperCase();
       const idxCorriente = upper.indexOf('ESTADO DE CUENTA CORRIENTE');
       const searchFrom = idxCorriente >= 0 ? idxCorriente : 0;
-      const idxActividades = upper.indexOf('ACTIVIDADES', searchFrom);
-      const textFromActividades =
-        idxActividades >= 0 ? text.slice(idxActividades) : text;
 
       try {
-        const raw = parseTransactions(textFromActividades);
+        // El PDF puede tener múltiples ocurrencias de "ACTIVIDADES".
+        // Probamos desde cada una y usamos la primera que realmente genere movimientos.
+        let raw: ReturnType<typeof parseTransactions> | null = null;
+        let chosen: number | null = null;
+
+        let i = searchFrom;
+        while (true) {
+          const idxActividades = upper.indexOf('ACTIVIDADES', i);
+          if (idxActividades < 0) break;
+
+          const candidateText = text.slice(idxActividades);
+          try {
+            const candidateRaw = parseTransactions(candidateText);
+            if (candidateRaw && candidateRaw.length > 0) {
+              raw = candidateRaw;
+              chosen = idxActividades;
+              break;
+            }
+          } catch {
+            // Try next ACTIVIDADES occurrence.
+          }
+
+          i = idxActividades + 'ACTIVIDADES'.length;
+        }
+
+        if (!raw || raw.length === 0) {
+          // As a last resort, use full text (should still throw if empty).
+          raw = parseTransactions(text);
+          chosen = searchFrom;
+        }
+
         const result = cleanAndValidateCurrentAccountData(raw, text);
 
         return NextResponse.json({
@@ -68,6 +95,7 @@ export async function POST(request: NextRequest) {
           statementType,
           parserSource: 'heuristic-text',
           extractionVersion: 'current-12col-from-actividades',
+          parserDebug: { chosenActividadesIndex: chosen },
         });
       } catch (e) {
         return NextResponse.json(
