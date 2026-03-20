@@ -1,5 +1,6 @@
 import type { ParsedTransaction } from '@/lib/pdf-processor';
 import { createRequire } from 'module';
+import { pathToFileURL } from 'url';
 
 type ExtractBCPResult = ParsedTransaction[];
 
@@ -103,11 +104,10 @@ export async function extractBCPByColumns(
     workerPath = req.resolve(
       'pdfjs-dist/legacy/build/pdf.worker.mjs'
     ) as string;
-    workerUrl = workerPath;
-    // pdfjs fake-worker uses `workerSrc` as an import specifier.
-    // In serverless the error indicates it uses filesystem paths directly,
-    // so we set it to the absolute path (no `file://`).
-    pdfjsLib.GlobalWorkerOptions.workerSrc = workerPath;
+    // pdfjs fake-worker does: `import(this.workerSrc)` (see _setupFakeWorkerGlobal)
+    // It expects an importable module specifier/URL; use file://.
+    workerUrl = pathToFileURL(workerPath).href;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
   } catch {
     // If resolution fails, pdfjs will fall back to its own defaults.
   }
