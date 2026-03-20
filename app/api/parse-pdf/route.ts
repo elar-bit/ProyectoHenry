@@ -35,10 +35,12 @@ export async function POST(request: NextRequest) {
     // 2) pdfjs-dist en TypeScript (sin Python / Vercel)
     // 3) Heurísticas sobre texto plano
     let transactions = [] as ReturnType<typeof parseTransactions>;
+    let parserSource: 'pdfplumber' | 'pdfjs-columns' | 'heuristic-text' = 'heuristic-text';
     try {
       const plumb = extractWithPdfPlumber(buffer);
       if (plumb && plumb.length > 0) {
         transactions = plumb;
+        parserSource = 'pdfplumber';
       }
     } catch {
       transactions = [];
@@ -46,18 +48,37 @@ export async function POST(request: NextRequest) {
     if (!transactions || transactions.length === 0) {
       try {
         transactions = await extractBCPByColumns(buffer);
+        if (transactions.length > 0) {
+          parserSource = 'pdfjs-columns';
+        }
       } catch {
         transactions = [];
       }
     }
     if (!transactions || transactions.length === 0) {
+      const looksLikeStructuredStatement =
+        /(CARGOS|DEBE)/i.test(text) && /(ABONOS|HABER)/i.test(text);
+      // Evitar clasificaciones erróneas cuando sí existe estructura tabular.
+      if (looksLikeStructuredStatement) {
+        return NextResponse.json(
+          {
+            error:
+              'No se pudo extraer con segmentacion por columnas. No se aplico fallback heuristico para evitar cargos/abonos incorrectos.',
+          },
+          { status: 422 }
+        );
+      }
       transactions = parseTransactions(text);
+      parserSource = 'heuristic-text';
     }
 
     // Clean and validate data
     const result = cleanAndValidateData(transactions, text);
 
-    return NextResponse.json(result);
+    return NextResponse.json({
+      ...result,
+      parserSource,
+    });
   } catch (error) {
     console.error('PDF parsing error:', error);
     return NextResponse.json(
