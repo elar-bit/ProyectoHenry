@@ -733,6 +733,16 @@ function parseCurrentAccountDescription(desc: string): {
   const iLugarNoHora = sucAgeLike ? iOrigen - 1 : -1;
   const iMedatNoHora = sucAgeLike ? iOrigen - 2 : -1;
 
+  // Caso típico cuando HORA no aparece y tampoco hay SUC-AGE:
+  // el token anterior a TIPO (con OCR suele ser "INT") corresponde a MEDAT*,
+  // no a ORIGEN.
+  const tokenPosibleMedatNoHora =
+    horaMissing && !sucAgeLike && iOrigen >= 0 ? tokens[iOrigen] : '';
+  const isIntMedatNoHora =
+    horaMissing &&
+    !sucAgeLike &&
+    tokenPosibleMedatNoHora.toUpperCase() === 'INT';
+
   return {
     descripcion:
       // If HORA exists, use full structured mapping.
@@ -744,18 +754,24 @@ function parseCurrentAccountDescription(desc: string): {
           ? tokens.slice(0, iMedatNoHora).join(' ').trim()
           : tokens.slice(0, iOrigen).join(' ').trim(),
     medat:
+      // If HORA exists, use full structured mapping.
       iHora >= 0 && iMedat >= 0
         ? tokens[iMedat] || ''
-        : iMedatNoHora >= 0
-          ? tokens[iMedatNoHora] || ''
-          : '',
+        : // If HORA missing and SUC-AGE detected, use medat no-hora mapping.
+          iMedatNoHora >= 0
+            ? tokens[iMedatNoHora] || ''
+            : // If HORA missing and no SUC-AGE, but token is INT: treat it as MEDAT*.
+              isIntMedatNoHora
+              ? tokenPosibleMedatNoHora
+              : '',
     // En este formato, lo que OCR reporta en la cola suele corresponder a
     // "SUC-AGE" (no a "Lugar"). Dejamos "Lugar" vacío y movemos el token.
     lugar: '',
     sucAge: iHora >= 0 ? (iLugar >= 0 ? tokens[iLugar] || '' : '') : (iLugarNoHora >= 0 ? tokens[iLugarNoHora] || '' : ''),
     numOp: iHora >= 0 ? (iNumOp >= 0 ? tokens[iNumOp] || '' : '') : '',
     hora: iHora >= 0 ? tokens[iHora] : '',
-    origen: tokens[iOrigen] || '',
+    origen: // If HORA missing and token INT without SUC-AGE, ORIGEN queda vacío.
+      isIntMedatNoHora ? '' : tokens[iOrigen] || '',
     tipo: tokens[iTipo] || '',
   };
 }
