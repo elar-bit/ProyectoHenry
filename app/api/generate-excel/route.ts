@@ -38,8 +38,8 @@ export async function POST(request: NextRequest) {
     const excelData = data.transactions.map((tx) => ({
       Fecha: tx.date,
       Descripcion: tx.description,
-      Debito: tx.debit || '',
-      Credito: tx.credit || '',
+      Debito: tx.debit && tx.debit !== 0 ? tx.debit : '',
+      Credito: tx.credit && tx.credit !== 0 ? tx.credit : '',
       Saldo: tx.balance,
     }));
 

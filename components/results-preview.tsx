@@ -32,6 +32,12 @@ export default function ResultsPreview({
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [showDetails, setShowDetails] = useState(false);
 
+  const formatMoney = (value: number) =>
+    value.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
   const toggleRow = (index: number) => {
     const newExpanded = new Set(expandedRows);
     if (newExpanded.has(index)) {
@@ -136,10 +142,7 @@ export default function ResultsPreview({
           <p className="text-sm text-slate-600">Saldo final</p>
           <p className="mt-1 text-xl font-semibold text-slate-900">
             {typeof data.accountInfo.calculatedBalance === 'number'
-              ? data.accountInfo.calculatedBalance.toLocaleString('es-ES', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })
+              ? formatMoney(data.accountInfo.calculatedBalance)
               : 'N/A'}
           </p>
         </div>
@@ -196,37 +199,28 @@ export default function ResultsPreview({
                   <td className="px-6 py-4 text-right text-sm font-medium text-slate-900">
                     {tx.debit && tx.debit !== '0' && tx.debit !== 0 ? (
                       <span className="text-red-600">
-                        -{typeof tx.debit === 'number'
-                          ? tx.debit.toLocaleString('es-ES', {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })
+                        {typeof tx.debit === 'number'
+                          ? formatMoney(tx.debit)
                           : tx.debit}
                       </span>
                     ) : (
-                      '-'
+                      ''
                     )}
                   </td>
                   <td className="px-6 py-4 text-right text-sm font-medium text-slate-900">
                     {tx.credit && tx.credit !== '0' && tx.credit !== 0 ? (
                       <span className="text-green-600">
-                        +{typeof tx.credit === 'number'
-                          ? tx.credit.toLocaleString('es-ES', {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })
+                        {typeof tx.credit === 'number'
+                          ? formatMoney(tx.credit)
                           : tx.credit}
                       </span>
                     ) : (
-                      '-'
+                      ''
                     )}
                   </td>
                   <td className="px-6 py-4 text-right text-sm font-medium text-slate-900">
                     {typeof tx.balance === 'number'
-                      ? tx.balance.toLocaleString('es-ES', {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })
+                      ? formatMoney(tx.balance)
                       : tx.balance}
                   </td>
                 </tr>

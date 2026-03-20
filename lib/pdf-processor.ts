@@ -488,13 +488,25 @@ export function cleanAndValidateData(
     balance: 0,
   }));
 
+  // Ensure the Excel starts with the same "SALDO ANTERIOR" line shown in BCP.
+  // It will appear as the first row with debit/credit empty and balance equal
+  // to the extracted initial balance.
+  const initialBalance = balances.initial ?? 0;
+  cleanedTransactions.unshift({
+    date: '',
+    description: 'SALDO ANTERIOR',
+    debit: 0,
+    credit: 0,
+    balance: initialBalance,
+  });
+
   // Validate transaction consistency
   validateTransactionConsistency(cleanedTransactions);
 
   // Calculate totals for validation
   let totalDebits = 0;
   let totalCredits = 0;
-  let runningBalance = balances.initial || 0;
+  let runningBalance = initialBalance;
 
   for (const tx of cleanedTransactions) {
     if (tx.debit > 0) totalDebits += tx.debit;
