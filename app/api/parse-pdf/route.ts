@@ -87,15 +87,51 @@ export async function POST(request: NextRequest) {
 
         let bestRaw: ReturnType<typeof parseTransactions> | null = null;
         let bestIdxActividades: number | null = null;
+        let bestMaxDate: { day: number; month: number } | null = null;
+
+        const getMaxDate = (
+          raw: ReturnType<typeof parseTransactions>
+        ): { day: number; month: number } | null => {
+          let max: { day: number; month: number } | null = null;
+          for (const tx of raw) {
+            const m = (tx.fechaProc || '').match(/^(\d{1,2})-(\d{1,2})$/);
+            if (!m) continue;
+            const day = parseInt(m[1], 10);
+            const month = parseInt(m[2], 10);
+            if (month < 1 || month > 12) continue;
+            if (day < 1 || day > 31) continue;
+            if (!max) {
+              max = { day, month };
+              continue;
+            }
+            if (month > max.month || (month === max.month && day > max.day)) {
+              max = { day, month };
+            }
+          }
+          return max;
+        };
 
         for (const idxActividades of activStarts.length ? activStarts : [searchFrom]) {
           try {
             const candidateText = text.slice(idxActividades);
             const candidateRaw = parseTransactions(candidateText);
             if (candidateRaw && candidateRaw.length > 0) {
-              if (!bestRaw || candidateRaw.length > bestRaw.length) {
+              const candidateMax = getMaxDate(candidateRaw);
+              const candidateBetter =
+                !bestRaw ||
+                !bestMaxDate ||
+                (candidateMax &&
+                  (candidateMax.month > bestMaxDate.month ||
+                    (candidateMax.month === bestMaxDate.month &&
+                      candidateMax.day > bestMaxDate.day)));
+
+              const tieBreakerByCount =
+                bestRaw && candidateRaw.length > bestRaw.length;
+
+              if (candidateBetter || tieBreakerByCount) {
                 bestRaw = candidateRaw;
                 bestIdxActividades = idxActividades;
+                bestMaxDate = candidateMax;
               }
             }
           } catch {
@@ -124,7 +160,10 @@ export async function POST(request: NextRequest) {
 
         const chosenStart = bestIdxActividades ?? searchFrom;
         const candidateTail = text.slice(chosenStart);
-        const ddmmMatch = candidateTail.match(/\b(\d{1,2})-(\d{1,2})\b/);
+        // Evitar falsos positivos como "0-07" (OCR/noise) y forzar day 1..31, month 1..12.
+        const ddmmMatch = candidateTail.match(
+          /\b(0?[1-9]|[12]\d|3[01])-(0?[1-9]|1[0-2])\b/
+        );
 
         const raw = (() => {
           if (!ddmmMatch || !ddmmMatch[1] || !ddmmMatch[2]) return bestRaw!;
