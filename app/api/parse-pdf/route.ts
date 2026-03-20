@@ -70,17 +70,25 @@ export async function POST(request: NextRequest) {
     if (!transactions || transactions.length === 0) {
       // Para BCP tabular, nunca degradar a heurística textual.
       if (looksLikeBCPColumns) {
-        return NextResponse.json(
-          {
-            error:
-              'No se pudo extraer el estado BCP con segmentacion por columnas.',
-            parserSource: 'none',
-            extractionVersion: 'v2-column-boundary',
-            parserDebug:
-              { pdfjsError, plumberError, looksLikeBCPColumns },
-          },
-          { status: 422 }
-        );
+        // Si en el despliegue fallan `pdfjs-dist` (worker) o Python/pdfplumber
+        // (por ejemplo en entornos serverless), devolver un 422 bloquea toda
+        // conversión. En ese caso usamos el parser de texto como último
+        // recurso para que el usuario pueda al menos revisar/descargar.
+        try {
+          transactions = parseTransactions(text);
+          parserSource = 'heuristic-text';
+        } catch {
+          return NextResponse.json(
+            {
+              error:
+                'No se pudo extraer el estado BCP con segmentacion por columnas.',
+              parserSource: 'none',
+              extractionVersion: 'v2-column-boundary',
+              parserDebug: { pdfjsError, plumberError, looksLikeBCPColumns },
+            },
+            { status: 422 }
+          );
+        }
       }
       // Fallback final para PDFs no tabulares.
       transactions = parseTransactions(text);
