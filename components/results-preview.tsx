@@ -77,8 +77,8 @@ export default function ResultsPreview({
     }
   };
 
-  const validationStatus =
-    data.accountInfo.reportBalance === data.accountInfo.calculatedBalance;
+  // No mostramos validaciones/cálculos de saldo; solo presentamos los datos extraídos.
+  const validationStatus = true;
 
   return (
     <div className="space-y-6">

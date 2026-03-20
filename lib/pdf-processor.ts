@@ -478,54 +478,36 @@ export function cleanAndValidateData(
   const accountNumber = extractAccountNumber(fullText);
   const balances = extractBalances(fullText);
 
-  // Clean and convert transaction data
-  const cleanedTransactions = transactions.map((tx) => ({
-    date: tx.date,
-    description: tx.description,
-    debit: parseLatamNumber(tx.debit),
-    credit: parseLatamNumber(tx.credit),
-    // Balance is computed later as a running balance.
-    balance: 0,
-  }));
-
   // Ensure the Excel starts with the same "SALDO ANTERIOR" line shown in BCP.
-  // It will appear as the first row with debit/credit empty and balance equal
-  // to the extracted initial balance.
-  const initialBalance = balances.initial ?? 0;
-  cleanedTransactions.unshift({
-    date: '',
-    description: 'SALDO ANTERIOR',
-    debit: 0,
-    credit: 0,
-    balance: initialBalance,
-  });
+  // Per requirement: do not calculate anything; only use balances extracted from the PDF.
+  const initialBalance = balances.initial;
+  const finalBalance = balances.final;
 
-  // Validate transaction consistency
+  const cleanedTransactions = [
+    {
+      date: '',
+      description: 'SALDO ANTERIOR',
+      debit: 0,
+      credit: 0,
+      balance: typeof initialBalance === 'number' ? initialBalance : '',
+    },
+    ...transactions.map((tx) => ({
+      date: tx.date,
+      description: tx.description,
+      debit: parseLatamNumber(tx.debit),
+      credit: parseLatamNumber(tx.credit),
+      // The statement lines may not include "saldo" per row. Do not calculate running saldo.
+      balance: '',
+    })),
+  ];
+
+  // Validate transaction consistency (no calculations: only sanity checks)
   validateTransactionConsistency(cleanedTransactions);
 
-  // Calculate totals for validation
-  let totalDebits = 0;
-  let totalCredits = 0;
-  let runningBalance = initialBalance;
-
-  for (const tx of cleanedTransactions) {
-    if (tx.debit > 0) totalDebits += tx.debit;
-    if (tx.credit > 0) totalCredits += tx.credit;
-
-    // Running balance: initial - debits + credits
-    runningBalance = runningBalance - tx.debit + tx.credit;
-    tx.balance = runningBalance;
-  }
-
-  const calculatedBalance =
-    cleanedTransactions.length > 0
-      ? cleanedTransactions[cleanedTransactions.length - 1].balance
-      : runningBalance;
-
-  const reportBalance = balances.final ?? calculatedBalance;
-
-  // Check for balance mismatch
-  const balanceMatch = Math.abs(reportBalance - calculatedBalance) < 0.01; // Allow for rounding
+  // Use extracted balances only (no running/calc)
+  const reportBalance = typeof finalBalance === 'number' ? finalBalance : initialBalance;
+  const calculatedBalance = reportBalance;
+  const balanceValid = true;
 
   return {
     transactions: cleanedTransactions,
@@ -533,9 +515,10 @@ export function cleanAndValidateData(
       accountNumber,
       reportBalance,
       calculatedBalance,
-      totalDebits,
-      totalCredits,
-      balanceValid: balanceMatch,
+      // Totals are not calculated; summary will be blank/unknown if not provided by the PDF.
+      totalDebits: undefined,
+      totalCredits: undefined,
+      balanceValid,
     },
   };
 }

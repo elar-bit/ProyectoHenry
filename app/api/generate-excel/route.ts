@@ -24,6 +24,12 @@ export async function POST(request: NextRequest) {
   try {
     const data: RequestData = await request.json();
 
+    const formatMoneyForExcel = (value: number) =>
+      value.toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+
     if (!data.transactions || data.transactions.length === 0) {
       return NextResponse.json(
         { error: 'No hay transacciones para exportar' },
@@ -38,9 +44,16 @@ export async function POST(request: NextRequest) {
     const excelData = data.transactions.map((tx) => ({
       Fecha: tx.date,
       Descripcion: tx.description,
-      Debito: tx.debit && tx.debit !== 0 ? tx.debit : '',
-      Credito: tx.credit && tx.credit !== 0 ? tx.credit : '',
-      Saldo: tx.balance,
+      Debito:
+        typeof tx.debit === 'number' && tx.debit !== 0
+          ? formatMoneyForExcel(tx.debit)
+          : '',
+      Credito:
+        typeof tx.credit === 'number' && tx.credit !== 0
+          ? formatMoneyForExcel(tx.credit)
+          : '',
+      Saldo:
+        typeof tx.balance === 'number' ? formatMoneyForExcel(tx.balance) : tx.balance || '',
     }));
 
     // Create main sheet
@@ -87,30 +100,33 @@ export async function POST(request: NextRequest) {
       // Debit column (C)
       const debitCell = worksheet['C' + row];
       if (debitCell) {
-        debitCell.z = '#,##0.00';
+        if (typeof debitCell.v === 'number') {
+          debitCell.z = '#,##0.00';
+        }
         debitCell.s = {
           alignment: { horizontal: 'right' },
-          numFmt: '#,##0.00',
         };
       }
 
       // Credit column (D)
       const creditCell = worksheet['D' + row];
       if (creditCell) {
-        creditCell.z = '#,##0.00';
+        if (typeof creditCell.v === 'number') {
+          creditCell.z = '#,##0.00';
+        }
         creditCell.s = {
           alignment: { horizontal: 'right' },
-          numFmt: '#,##0.00',
         };
       }
 
       // Balance column (E)
       const balanceCell = worksheet['E' + row];
       if (balanceCell) {
-        balanceCell.z = '#,##0.00';
+        if (typeof balanceCell.v === 'number') {
+          balanceCell.z = '#,##0.00';
+        }
         balanceCell.s = {
           alignment: { horizontal: 'right' },
-          numFmt: '#,##0.00',
         };
       }
     }
@@ -124,16 +140,19 @@ export async function POST(request: NextRequest) {
       ['Transacciones totales', data.transactions.length],
       [],
       ['Informacion de saldo'],
-      ['Total debitos', data.accountInfo.totalDebits || 0],
-      ['Total creditos', data.accountInfo.totalCredits || 0],
-      ['Saldo reportado', data.accountInfo.reportBalance || 0],
-      ['Saldo calculado', data.accountInfo.calculatedBalance || 0],
+      ['Total debitos', data.accountInfo.totalDebits ?? ''],
+      ['Total creditos', data.accountInfo.totalCredits ?? ''],
+      ['Saldo reportado', data.accountInfo.reportBalance ?? ''],
+      ['Saldo calculado', data.accountInfo.calculatedBalance ?? ''],
       [],
       [
         'Estado',
-        data.accountInfo.reportBalance === data.accountInfo.calculatedBalance
-          ? 'VALIDO'
-          : 'DESAJUSTE DE SALDO',
+        typeof data.accountInfo.reportBalance === 'number' &&
+        typeof data.accountInfo.calculatedBalance === 'number'
+          ? data.accountInfo.reportBalance === data.accountInfo.calculatedBalance
+            ? 'VALIDO'
+            : 'DESAJUSTE DE SALDO'
+          : 'SIN DATOS',
       ],
     ]);
 
