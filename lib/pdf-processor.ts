@@ -158,6 +158,32 @@ export interface ParsedTransaction {
   raw?: string;
 }
 
+function detectTextAmountBoundary(lines: string[]): number | null {
+  const debeCenters: number[] = [];
+  const haberCenters: number[] = [];
+
+  for (const line of lines) {
+    const upper = line.toUpperCase();
+    const idxCargos = upper.indexOf('CARGOS');
+    const idxDebe = upper.indexOf('DEBE');
+    const idxAbonos = upper.indexOf('ABONOS');
+    const idxHaber = upper.indexOf('HABER');
+
+    if (idxCargos >= 0) debeCenters.push(idxCargos + 'CARGOS'.length / 2);
+    if (idxDebe >= 0) debeCenters.push(idxDebe + 'DEBE'.length / 2);
+    if (idxAbonos >= 0) haberCenters.push(idxAbonos + 'ABONOS'.length / 2);
+    if (idxHaber >= 0) haberCenters.push(idxHaber + 'HABER'.length / 2);
+  }
+
+  if (debeCenters.length === 0 || haberCenters.length === 0) return null;
+  const avgDebe = debeCenters.reduce((a, b) => a + b, 0) / debeCenters.length;
+  const avgHaber =
+    haberCenters.reduce((a, b) => a + b, 0) / haberCenters.length;
+  const lo = Math.min(avgDebe, avgHaber);
+  const hi = Math.max(avgDebe, avgHaber);
+  return (lo + hi) / 2;
+}
+
 // Parse transaction rows from PDF text
 export function parseTransactions(text: string): ParsedTransaction[] {
   const transactions: ParsedTransaction[] = [];
@@ -168,6 +194,7 @@ export function parseTransactions(text: string): ParsedTransaction[] {
 
   // Split by lines
   const lines = text.split('\n');
+  const textAmountBoundary = detectTextAmountBoundary(lines);
 
   // Strategy 1: BCP statement format as seen in your PDF:
   //   02FEB 02FEB <DESCRIPCION> [*] <MONTO>
@@ -261,7 +288,14 @@ export function parseTransactions(text: string): ParsedTransaction[] {
     let debitStr = '';
     let creditStr = '';
 
-    if (looksCredit && !looksDebit) {
+    const amountStart = line.lastIndexOf(amountToken);
+    if (textAmountBoundary !== null && amountStart >= 0) {
+      if (amountStart >= textAmountBoundary) {
+        creditStr = amountToken;
+      } else {
+        debitStr = amountToken;
+      }
+    } else if (looksCredit && !looksDebit) {
       creditStr = amountToken;
     } else if (looksDebit && !looksCredit) {
       debitStr = amountToken;
@@ -362,8 +396,15 @@ export function parseTransactions(text: string): ParsedTransaction[] {
         let creditStr = '';
 
         // If the PDF encodes negatives via "X.XX-", treat them as debits.
+        const amountStart = line.lastIndexOf(amountTokenRaw);
         if (isTrailingNegative) {
           debitStr = amountTokenClean;
+        } else if (textAmountBoundary !== null && amountStart >= 0) {
+          if (amountStart >= textAmountBoundary) {
+            creditStr = amountTokenClean;
+          } else {
+            debitStr = amountTokenClean;
+          }
         } else if (looksCredit && !looksDebit) {
           creditStr = amountTokenClean;
         } else if (looksDebit && !looksCredit) {
