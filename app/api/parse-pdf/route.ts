@@ -38,6 +38,7 @@ export async function POST(request: NextRequest) {
     let parserSource: 'pdfplumber' | 'pdfjs-columns' | 'heuristic-text' =
       'heuristic-text';
     let pdfjsError: string | null = null;
+    let plumberError: string | null = null;
     const looksLikeBCPColumns =
       /(CARGOS|DEBE)/i.test(text) && /(ABONOS|HABER)/i.test(text);
 
@@ -60,7 +61,8 @@ export async function POST(request: NextRequest) {
           transactions = plumb;
           parserSource = 'pdfplumber';
         }
-      } catch {
+      } catch (e) {
+        plumberError = e instanceof Error ? e.message : 'unknown';
         transactions = [];
       }
     }
@@ -75,9 +77,7 @@ export async function POST(request: NextRequest) {
             parserSource: 'none',
             extractionVersion: 'v2-column-boundary',
             parserDebug:
-              process.env.NODE_ENV !== 'production'
-                ? { pdfjsError, looksLikeBCPColumns }
-                : undefined,
+              { pdfjsError, plumberError, looksLikeBCPColumns },
           },
           { status: 422 }
         );
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
       extractionVersion: 'v2-column-boundary',
       parserDebug:
         process.env.NODE_ENV !== 'production'
-          ? { pdfjsError, looksLikeBCPColumns }
+          ? { pdfjsError, plumberError, looksLikeBCPColumns }
           : undefined,
     });
   } catch (error) {

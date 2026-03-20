@@ -1,6 +1,7 @@
 import { spawnSync } from 'child_process';
 import path from 'path';
 import type { ParsedTransaction } from '@/lib/pdf-processor';
+import fs from 'fs';
 
 type PdfPlumberPayload = { transactions: ParsedTransaction[]; error?: string };
 
@@ -27,8 +28,30 @@ function parseJsonFromOutput(raw: string): PdfPlumberPayload | null {
  */
 export function extractWithPdfPlumber(
   pdfBuffer: ArrayBuffer
-): ParsedTransaction[] | null {
-  const scriptPath = path.join(process.cwd(), 'python', 'bcp_extract.py');
+): ParsedTransaction[] {
+  const candidates: string[] = [
+    path.join(process.cwd(), 'python', 'bcp_extract.py'),
+  ];
+  // __dirname puede no estar definido si el runtime compila como ESM.
+  try {
+    // eslint-disable-next-line no-undef
+    if (typeof __dirname === 'string') {
+      // eslint-disable-next-line no-undef
+      candidates.push(path.join(__dirname, '..', 'python', 'bcp_extract.py'));
+    }
+  } catch {
+    // ignore
+  }
+
+  const scriptPath =
+    candidates.find((p) => {
+      try {
+        return fs.existsSync(p);
+      } catch {
+        return false;
+      }
+    }) || candidates[0];
+
   const buf = Buffer.from(pdfBuffer);
 
   const tryPython = (cmd: string) =>
@@ -45,18 +68,24 @@ export function extractWithPdfPlumber(
   }
 
   if (result.error) {
-    return null;
+    throw new Error(
+      `pdfplumber: failed to start python (${result.error.message})`
+    );
   }
   if (result.status !== 0 && result.status !== null) {
-    return null;
+    throw new Error(
+      `pdfplumber: script exit status ${String(result.status)}`
+    );
   }
 
   const parsed = parseJsonFromOutput(result.stdout || '');
   if (!parsed || parsed.error) {
-    return null;
+    throw new Error(
+      `pdfplumber: invalid output${parsed?.error ? ` (${parsed.error})` : ''}`
+    );
   }
   if (!Array.isArray(parsed.transactions)) {
-    return null;
+    throw new Error('pdfplumber: transactions missing/invalid');
   }
 
   return parsed.transactions;

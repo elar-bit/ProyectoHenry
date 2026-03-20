@@ -86,8 +86,18 @@ export async function extractBCPByColumns(
 ): Promise<ExtractBCPResult> {
   // pdfjs-dist is only needed on server side.
   const pdfjsLib: any = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  // In Next.js server chunks, worker resolution can fail.
-  // We rely on disableWorker below and avoid setting workerSrc.
+  // In Next.js/Turbopack, worker resolution can fail if `workerSrc` is not set.
+  // We resolve the worker file from node_modules and force `workerSrc` to a valid path.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval
+    const req = (0, eval)('require') as NodeRequire;
+    const workerPath = req.resolve(
+      'pdfjs-dist/legacy/build/pdf.worker.mjs'
+    ) as string;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = workerPath;
+  } catch {
+    // If resolution fails, pdfjs will fall back to its own defaults.
+  }
 
   const doc = await pdfjsLib
     .getDocument({
