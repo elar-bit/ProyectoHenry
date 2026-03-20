@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import XLSX from 'xlsx';
+import * as XLSX from 'xlsx';
 
 interface Transaction {
   date: string;
