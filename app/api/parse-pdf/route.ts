@@ -78,8 +78,12 @@ export async function POST(request: NextRequest) {
 
         if (looksLikeAltBCP) {
           // Requisito: este formato debe iniciar el parseo desde la sección
-          // "ACTIVIDADES" para no incluir encabezados previos.
-          const idxActividades = text.toUpperCase().indexOf('ACTIVIDADES');
+          // "ACTIVIDADES" pero dentro de la sección de "CUENTA CORRIENTE"
+          // para no incluir la parte de "cuentas de ahorros" si viene antes.
+          const upper = text.toUpperCase();
+          const idxCorriente = upper.indexOf('ESTADO DE CUENTA CORRIENTE');
+          const searchFrom = idxCorriente >= 0 ? idxCorriente : 0;
+          const idxActividades = upper.indexOf('ACTIVIDADES', searchFrom);
           const textFromActividades =
             idxActividades >= 0 ? text.slice(idxActividades) : text;
 
