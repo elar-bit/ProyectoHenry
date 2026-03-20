@@ -4,11 +4,11 @@ import React, { useState } from 'react';
 import { Download, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface Transaction {
-  date: string;
+  fechaProc: string;
+  fechaValor: string;
   description: string;
-  debit: number | string;
-  credit: number | string;
-  balance: number | string;
+  debit: number;
+  credit: number;
 }
 
 interface ResultsData {
@@ -124,7 +124,7 @@ export default function ResultsPreview({
         )}
       </div>
 
-      {/* Statistics Cards */}
+        {/* Statistics Cards */}
       <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-slate-200">
           <p className="text-sm text-slate-600">Transacciones totales</p>
@@ -155,19 +155,19 @@ export default function ResultsPreview({
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
                 <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">
-                  Fecha
+                  Fecha Proc.
+                </th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">
+                  Fecha Valor
                 </th>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">
                   Descripcion
                 </th>
                 <th className="px-6 py-3 text-right text-sm font-semibold text-slate-900">
-                  Debito
+                  Cargos / Debe
                 </th>
                 <th className="px-6 py-3 text-right text-sm font-semibold text-slate-900">
-                  Credito
-                </th>
-                <th className="px-6 py-3 text-right text-sm font-semibold text-slate-900">
-                  Saldo
+                  Abonos / Haber
                 </th>
               </tr>
             </thead>
@@ -179,7 +179,10 @@ export default function ResultsPreview({
                   onClick={() => toggleRow(index)}
                 >
                   <td className="px-6 py-4 text-sm text-slate-900">
-                    {tx.date}
+                    {tx.fechaProc}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-slate-900">
+                    {tx.fechaValor}
                   </td>
                   <td className="px-6 py-4 text-sm text-slate-700">
                     <div className="flex items-center gap-2">
@@ -197,31 +200,22 @@ export default function ResultsPreview({
                     )}
                   </td>
                   <td className="px-6 py-4 text-right text-sm font-medium text-slate-900">
-                    {tx.debit && tx.debit !== '0' && tx.debit !== 0 ? (
+                    {tx.debit !== 0 ? (
                       <span className="text-red-600">
-                        {typeof tx.debit === 'number'
-                          ? formatMoney(tx.debit)
-                          : tx.debit}
+                        {formatMoney(tx.debit)}
                       </span>
                     ) : (
                       ''
                     )}
                   </td>
                   <td className="px-6 py-4 text-right text-sm font-medium text-slate-900">
-                    {tx.credit && tx.credit !== '0' && tx.credit !== 0 ? (
+                    {tx.credit !== 0 ? (
                       <span className="text-green-600">
-                        {typeof tx.credit === 'number'
-                          ? formatMoney(tx.credit)
-                          : tx.credit}
+                        {formatMoney(tx.credit)}
                       </span>
                     ) : (
                       ''
                     )}
-                  </td>
-                  <td className="px-6 py-4 text-right text-sm font-medium text-slate-900">
-                    {typeof tx.balance === 'number'
-                      ? formatMoney(tx.balance)
-                      : tx.balance}
                   </td>
                 </tr>
               ))}

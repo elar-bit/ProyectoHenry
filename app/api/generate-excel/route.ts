@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
 
 interface Transaction {
-  date: string;
+  fechaProc: string;
+  fechaValor: string;
   description: string;
   debit: number;
   credit: number;
-  balance: number;
 }
 
 interface RequestData {
@@ -42,18 +42,17 @@ export async function POST(request: NextRequest) {
 
     // Prepare transactions data for Excel
     const excelData = data.transactions.map((tx) => ({
-      Fecha: tx.date,
+      'Fecha Proc.': tx.fechaProc,
+      'Fecha Valor': tx.fechaValor,
       Descripcion: tx.description,
-      Debito:
+      'Cargos / Debe':
         typeof tx.debit === 'number' && tx.debit !== 0
           ? formatMoneyForExcel(tx.debit)
           : '',
-      Credito:
+      'Abonos / Haber':
         typeof tx.credit === 'number' && tx.credit !== 0
           ? formatMoneyForExcel(tx.credit)
           : '',
-      Saldo:
-        typeof tx.balance === 'number' ? formatMoneyForExcel(tx.balance) : tx.balance || '',
     }));
 
     // Create main sheet
@@ -61,11 +60,11 @@ export async function POST(request: NextRequest) {
 
     // Add formatting
     const wscols = [
-      { wch: 12 }, // Date
-      { wch: 35 }, // Description
-      { wch: 15 }, // Debit
-      { wch: 15 }, // Credit
-      { wch: 15 }, // Balance
+      { wch: 12 }, // Fecha Proc
+      { wch: 12 }, // Fecha Valor
+      { wch: 35 }, // Descripcion
+      { wch: 18 }, // Cargos / Debe
+      { wch: 18 }, // Abonos / Haber
     ];
     worksheet['!cols'] = wscols;
 
@@ -97,8 +96,8 @@ export async function POST(request: NextRequest) {
       row <= excelData.length + 1;
       row++
     ) {
-      // Debit column (C)
-      const debitCell = worksheet['C' + row];
+      // Debit column (D)
+      const debitCell = worksheet['D' + row];
       if (debitCell) {
         if (typeof debitCell.v === 'number') {
           debitCell.z = '#,##0.00';
@@ -108,8 +107,8 @@ export async function POST(request: NextRequest) {
         };
       }
 
-      // Credit column (D)
-      const creditCell = worksheet['D' + row];
+      // Credit column (E)
+      const creditCell = worksheet['E' + row];
       if (creditCell) {
         if (typeof creditCell.v === 'number') {
           creditCell.z = '#,##0.00';
@@ -119,16 +118,7 @@ export async function POST(request: NextRequest) {
         };
       }
 
-      // Balance column (E)
-      const balanceCell = worksheet['E' + row];
-      if (balanceCell) {
-        if (typeof balanceCell.v === 'number') {
-          balanceCell.z = '#,##0.00';
-        }
-        balanceCell.s = {
-          alignment: { horizontal: 'right' },
-        };
-      }
+      // No existe columna de Saldo en el Excel (se respeta el PDF).
     }
 
     // Create summary sheet

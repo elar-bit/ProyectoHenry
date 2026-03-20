@@ -150,11 +150,11 @@ function extractBalances(
 }
 
 export interface ParsedTransaction {
-  date: string;
+  fechaProc: string;
+  fechaValor: string;
   description: string;
   debit: string;
   credit: string;
-  balance: string;
   raw?: string;
 }
 
@@ -202,24 +202,28 @@ export function parseTransactions(text: string): ParsedTransaction[] {
     const dateMatch = line.match(/^(\d{1,2})([A-Z]{3})\s+(\d{1,2})([A-Z]{3})\s+(.+)$/);
     if (!dateMatch) continue;
 
-    const dayStr = dateMatch[1];
-    const monthStr = dateMatch[2];
+    const dayProcStr = dateMatch[1];
+    const monthProcStr = dateMatch[2];
+    const dayValorStr = dateMatch[3];
+    const monthValorStr = dateMatch[4];
     const rest = dateMatch[5];
 
-    const monthNum = monthMap[monthStr];
-    if (!monthNum || inferredYear === undefined) continue;
+    // Use the tokens as they appear in the statement (e.g. "02FEB") for the Excel columns.
+    const fechaProc = `${String(dayProcStr).padStart(2, '0')}${monthProcStr}`;
+    const fechaValor = `${String(dayValorStr).padStart(2, '0')}${monthValorStr}`;
 
-    const date = `${String(dayStr).padStart(2, '0')}/${monthNum}/${inferredYear}`;
+    // Keep the old month validation as a safety filter.
+    if (!monthMap[monthProcStr] || !monthMap[monthValorStr]) continue;
 
     // Extract the last "amount" from the end of the line. OCR sometimes has a '*' before it.
     // Example: "ABON PLIN-... S * 40.00" or "IMPUESTO ITF * 0.05"
-    const amountMatch = rest.match(
-      /^(.*?)(?:\s*\*\s*)?([-\u2013\u2014]|\(?-?\d[\d.,\s]*\)?|\d[\d.,]*\d)\s*$/
-    );
-    if (!amountMatch) continue;
-
-    const descPart = amountMatch[1].trim();
-    const amountToken = amountMatch[2].trim();
+    // Take the last numeric token in the row (so we don't grab numbers inside the description).
+    const numericRegex = /(?:\(?-?\d[\d,\.]*\d\)?|\.\d+|-?\.\d+)(?:-)?/g;
+    const matches = Array.from(rest.matchAll(numericRegex));
+    if (matches.length === 0) continue;
+    const last = matches[matches.length - 1];
+    const amountToken = last[0].trim();
+    const descPart = rest.slice(0, last.index ?? rest.length).trim();
     const amount = parseLatamNumber(amountToken);
 
     // If we cannot parse a number, skip.
@@ -269,13 +273,12 @@ export function parseTransactions(text: string): ParsedTransaction[] {
       }
     }
 
-    // Balance will be computed later as a running balance.
     transactions.push({
-      date,
       description: cleanDescription(descPart),
+      fechaProc,
+      fechaValor,
       debit: debitStr,
       credit: creditStr,
-      balance: '',
       raw: line,
     });
   }
@@ -311,9 +314,9 @@ export function parseTransactions(text: string): ParsedTransaction[] {
         if (Number.isNaN(dayNum) || Number.isNaN(monthNum)) continue;
         if (monthNum < 1 || monthNum > 12) continue;
 
-        const date = `${String(dayNum).padStart(2, '0')}/${String(
+        const fecha = `${String(dayNum).padStart(2, '0')}-${String(
           monthNum
-        ).padStart(2, '0')}/${inferredYear}`;
+        ).padStart(2, '0')}`;
 
         // Amount = last numeric token in the line (can be "3.50-" for negative)
         // Amount can appear as "23.00" or ".85-" depending on OCR.
@@ -366,11 +369,11 @@ export function parseTransactions(text: string): ParsedTransaction[] {
         }
 
         transactions.push({
-          date,
+          fechaProc: fecha,
+          fechaValor: fecha,
           description: cleanDescription(descPart),
           debit: debitStr,
           credit: creditStr,
-          balance: '',
           raw: line,
         });
       }
@@ -393,7 +396,7 @@ export function parseTransactions(text: string): ParsedTransaction[] {
     );
 
     if (transactionMatch) {
-      const [, date, desc, debit, credit, balance] = transactionMatch;
+      const [, date, desc, debit, credit] = transactionMatch;
 
       // Validate date format
       if (!isValidDate(date)) {
@@ -404,9 +407,8 @@ export function parseTransactions(text: string): ParsedTransaction[] {
       // Validate numeric fields
       const debitNum = parseLatamNumber(debit);
       const creditNum = parseLatamNumber(credit);
-      const balanceNum = parseLatamNumber(balance);
 
-      if (isNaN(debitNum) || isNaN(creditNum) || isNaN(balanceNum)) {
+      if (isNaN(debitNum) || isNaN(creditNum)) {
         i++;
         continue;
       }
@@ -429,11 +431,11 @@ export function parseTransactions(text: string): ParsedTransaction[] {
       }
 
       transactions.push({
-        date,
+        fechaProc: date,
+        fechaValor: date,
         description: cleanDescription(fullDescription),
         debit: debit.trim(),
         credit: credit.trim(),
-        balance: balance.trim(),
         raw: line,
       });
 
@@ -478,26 +480,34 @@ export function cleanAndValidateData(
   const accountNumber = extractAccountNumber(fullText);
   const balances = extractBalances(fullText);
 
-  // Ensure the Excel starts with the same "SALDO ANTERIOR" line shown in BCP.
-  // Per requirement: do not calculate anything; only use balances extracted from the PDF.
+  // Ensure the Excel starts with the same "SALDO ANTERIOR" line shown in the statement.
+  // Per requirement: do not calculate anything; only extract and place values.
   const initialBalance = balances.initial;
   const finalBalance = balances.final;
 
+  const formatMoney = (value: number) =>
+    value.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
   const cleanedTransactions = [
     {
-      date: '',
-      description: 'SALDO ANTERIOR',
+      fechaProc: '',
+      fechaValor: '',
+      description:
+        typeof initialBalance === 'number'
+          ? `SALDO ANTERIOR ${formatMoney(initialBalance)}`
+          : 'SALDO ANTERIOR',
       debit: 0,
       credit: 0,
-      balance: typeof initialBalance === 'number' ? initialBalance : '',
     },
     ...transactions.map((tx) => ({
-      date: tx.date,
+      fechaProc: tx.fechaProc,
+      fechaValor: tx.fechaValor,
       description: tx.description,
       debit: parseLatamNumber(tx.debit),
       credit: parseLatamNumber(tx.credit),
-      // The statement lines may not include "saldo" per row. Do not calculate running saldo.
-      balance: '',
     })),
   ];
 
@@ -505,7 +515,8 @@ export function cleanAndValidateData(
   validateTransactionConsistency(cleanedTransactions);
 
   // Use extracted balances only (no running/calc)
-  const reportBalance = typeof finalBalance === 'number' ? finalBalance : initialBalance;
+  const reportBalance =
+    typeof finalBalance === 'number' ? finalBalance : initialBalance;
   const calculatedBalance = reportBalance;
   const balanceValid = true;
 
@@ -526,10 +537,10 @@ export function cleanAndValidateData(
 // Validate transaction consistency
 function validateTransactionConsistency(
   transactions: Array<{
-    date: string;
+    fechaProc: string;
+    fechaValor: string;
     debit: number;
     credit: number;
-    balance: number;
   }>
 ): void {
   if (transactions.length === 0) {
