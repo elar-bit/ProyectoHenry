@@ -460,7 +460,12 @@ export function parseTransactions(text: string): ParsedTransaction[] {
             moneyOnlyPtr++;
           }
           const candidate = moneyOnlyTokens[moneyOnlyPtr];
-          if (candidate && candidate.idx > li && candidate.idx <= li + 40) {
+          const maxLookahead = rest.trim().length === 0 ? 200 : 40;
+          if (
+            candidate &&
+            candidate.idx > li &&
+            candidate.idx <= li + maxLookahead
+          ) {
             amountFromRest = false;
             amountTokenRaw = candidate.token;
             moneyOnlyPtr++;
