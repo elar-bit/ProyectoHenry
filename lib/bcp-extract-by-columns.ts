@@ -98,14 +98,15 @@ export async function extractBCPByColumns(
   // In serverless/Next chunks, resolving worker paths via `eval('require')`
   // can fail. Use createRequire so `pdfjs-dist` can load the worker file.
   let workerUrl: string | undefined;
-  let workerPath: string | undefined;
   try {
-    const req = createRequire(`${process.cwd()}/package.json`);
-    workerPath = req.resolve(
+    // Resolve from this module, independent of runtime cwd.
+    const req = createRequire(import.meta.url);
+    const workerPath = req.resolve(
       'pdfjs-dist/legacy/build/pdf.worker.mjs'
     ) as string;
+
     // pdfjs fake-worker does: `import(this.workerSrc)` (see _setupFakeWorkerGlobal)
-    // It expects an importable module specifier/URL; use file://.
+    // so provide a real file:// URL.
     workerUrl = pathToFileURL(workerPath).href;
     pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
   } catch {
