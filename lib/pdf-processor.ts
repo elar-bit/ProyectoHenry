@@ -717,10 +717,18 @@ function parseCurrentAccountDescription(desc: string): {
   const iLugar = iNumOp >= 1 ? iNumOp - 1 : -1;
   const iMedat = iLugar >= 1 ? iLugar - 1 : -1;
 
-  const sucAgeCandidate = horaMissing && iOrigen - 1 >= 0 ? tokens[iOrigen - 1] : '';
-  const sucAgeLike = horaMissing
-    ? /^\d{1,4}-\d{1,3}$/.test(sucAgeCandidate) || /^\d{3}-\d{3}$/.test(sucAgeCandidate)
-    : false;
+  const sucAgeCandidate =
+    horaMissing && iOrigen - 1 >= 0 ? tokens[iOrigen - 1] : '';
+  // Para evitar “correr” columnas en colas sin HORA, solo aplicamos el
+  // mapeo especial cuando el token previo a SUC-AGE es exactamente `INT`
+  // (caso típico de "ENVIO... INT 191-000 ...").
+  const medatCandidate =
+    horaMissing && iOrigen - 2 >= 0 ? tokens[iOrigen - 2] : '';
+  const sucAgeLike =
+    horaMissing &&
+    medatCandidate === 'INT' &&
+    (/^\d{1,4}-\d{1,3}$/.test(sucAgeCandidate) ||
+      /^\d{3}-\d{3}$/.test(sucAgeCandidate));
 
   const iLugarNoHora = sucAgeLike ? iOrigen - 1 : -1;
   const iMedatNoHora = sucAgeLike ? iOrigen - 2 : -1;
