@@ -54,6 +54,9 @@ export default function ResultsPreview({
 }: ResultsPreviewProps) {
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [showDetails, setShowDetails] = useState(false);
+  const [previewMode, setPreviewMode] = useState<'inicio' | 'final'>(
+    'inicio'
+  );
   const statementType: StatementType = data.statementType === 'corrientes' ? 'corrientes' : 'ahorros';
 
   const formatMoney = (value: number) =>
@@ -103,6 +106,10 @@ export default function ResultsPreview({
 
   // No mostramos validaciones/cálculos de saldo; solo presentamos los datos extraídos.
   const validationStatus = true;
+  const previewTransactions =
+    previewMode === 'inicio'
+      ? data.transactions.slice(0, PREVIEW_ROW_LIMIT)
+      : data.transactions.slice(-PREVIEW_ROW_LIMIT);
 
   return (
     <div className="space-y-6">
@@ -214,9 +221,7 @@ export default function ResultsPreview({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {data.transactions
-                    .slice(0, PREVIEW_ROW_LIMIT)
-                    .map((tx, index) => {
+                  {previewTransactions.map((tx, index) => {
                       const t = tx as CurrentAccountTransaction;
                       return (
                         <tr
@@ -305,9 +310,7 @@ export default function ResultsPreview({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {(data.transactions as SavingsTransaction[])
-                    .slice(0, PREVIEW_ROW_LIMIT)
-                    .map((tx, index) => (
+                  {(previewTransactions as SavingsTransaction[]).map((tx, index) => (
                       <tr
                         key={index}
                         className="hover:bg-slate-50 transition-colors cursor-pointer"
@@ -370,6 +373,18 @@ export default function ResultsPreview({
 
       {/* Action Buttons */}
       <div className="flex gap-3">
+        <button
+          type="button"
+          onClick={() => {
+            setExpandedRows(new Set());
+            setPreviewMode(previewMode === 'inicio' ? 'final' : 'inicio');
+          }}
+          className="flex-1 rounded-lg bg-slate-200 px-6 py-3 font-semibold text-slate-900 transition-colors hover:bg-slate-300"
+        >
+          {previewMode === 'inicio'
+            ? 'Ver últimos 50'
+            : 'Ver primeros 50'}
+        </button>
         <button
           type="button"
           onClick={downloadExcel}
