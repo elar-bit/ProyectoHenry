@@ -53,20 +53,20 @@ export default function ResultsPreview({
       });
 
       if (!response.ok) {
-        throw new Error('Failed to generate Excel');
+        throw new Error('No se pudo generar el archivo de Excel');
       }
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `bank-statement-${new Date().toISOString().split('T')[0]}.xlsx`;
+      a.download = `estado-de-cuenta-${new Date().toISOString().split('T')[0]}.xlsx`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (err) {
-      alert('Failed to download Excel file');
+      alert('No se pudo descargar el archivo de Excel');
       console.error(err);
     }
   };
@@ -81,10 +81,10 @@ export default function ResultsPreview({
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-bold text-slate-900">
-              Conversion Complete
+              Conversión completada
             </h2>
             <p className="mt-1 text-slate-600">
-              Your bank statement has been successfully parsed and is ready to download
+              Tu estado de cuenta se analizó correctamente y está listo para descargar
             </p>
           </div>
           <div
@@ -111,10 +111,9 @@ export default function ResultsPreview({
         {/* Validation Info */}
         {!validationStatus && (
           <div className="mt-4 rounded-lg bg-yellow-50 p-3 text-sm text-yellow-800 ring-1 ring-yellow-200">
-            <span className="font-semibold">⚠️ Balance Mismatch:</span> The
-            calculated balance ({data.accountInfo.calculatedBalance}) differs
-            from the reported balance ({data.accountInfo.reportBalance}). Please
-            review the data.
+            <span className="font-semibold">⚠️ Desajuste de saldo:</span> El saldo
+            calculado ({data.accountInfo.calculatedBalance}) es diferente del saldo
+            reportado ({data.accountInfo.reportBalance}). Por favor revisa los datos.
           </div>
         )}
       </div>
@@ -122,19 +121,19 @@ export default function ResultsPreview({
       {/* Statistics Cards */}
       <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-slate-200">
-          <p className="text-sm text-slate-600">Total Transactions</p>
+          <p className="text-sm text-slate-600">Transacciones totales</p>
           <p className="mt-1 text-3xl font-bold text-slate-900">
             {data.transactions.length}
           </p>
         </div>
         <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-slate-200">
-          <p className="text-sm text-slate-600">Account Number</p>
+          <p className="text-sm text-slate-600">Número de cuenta</p>
           <p className="mt-1 text-xl font-semibold text-slate-900">
             {data.accountInfo.accountNumber || 'N/A'}
           </p>
         </div>
         <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-slate-200">
-          <p className="text-sm text-slate-600">Final Balance</p>
+          <p className="text-sm text-slate-600">Saldo final</p>
           <p className="mt-1 text-xl font-semibold text-slate-900">
             {typeof data.accountInfo.calculatedBalance === 'number'
               ? data.accountInfo.calculatedBalance.toLocaleString('es-ES', {
@@ -153,19 +152,19 @@ export default function ResultsPreview({
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
                 <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">
-                  Date
+                  Fecha
                 </th>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">
-                  Description
+                  Descripcion
                 </th>
                 <th className="px-6 py-3 text-right text-sm font-semibold text-slate-900">
-                  Debit
+                  Debito
                 </th>
                 <th className="px-6 py-3 text-right text-sm font-semibold text-slate-900">
-                  Credit
+                  Credito
                 </th>
                 <th className="px-6 py-3 text-right text-sm font-semibold text-slate-900">
-                  Balance
+                  Saldo
                 </th>
               </tr>
             </thead>
@@ -238,8 +237,8 @@ export default function ResultsPreview({
 
         {data.transactions.length > 10 && (
           <div className="border-t border-slate-200 bg-slate-50 px-6 py-3 text-center text-sm text-slate-600">
-            Showing 10 of {data.transactions.length} transactions (all will be
-            included in the Excel file)
+            Mostrando 10 de {data.transactions.length} transacciones (todas se
+            incluirán en el archivo de Excel)
           </div>
         )}
       </div>
@@ -252,14 +251,14 @@ export default function ResultsPreview({
           className="flex-1 rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-blue-700 flex items-center justify-center gap-2"
         >
           <Download className="h-5 w-5" />
-          Download Excel File
+          Descargar archivo de Excel
         </button>
         <button
           type="button"
           onClick={onReset}
           className="rounded-lg bg-slate-200 px-6 py-3 font-semibold text-slate-900 transition-colors hover:bg-slate-300"
         >
-          Convert Another File
+          Convertir otro archivo
         </button>
       </div>
     </div>

@@ -85,7 +85,7 @@ export function parseTransactions(text: string): ParsedTransaction[] {
   const transactions: ParsedTransaction[] = [];
 
   if (!text || text.trim().length === 0) {
-    throw new Error('PDF appears to be empty or unreadable');
+    throw new Error('El PDF parece estar vacio o no legible');
   }
 
   // Split by lines
@@ -154,7 +154,7 @@ export function parseTransactions(text: string): ParsedTransaction[] {
 
   if (transactions.length === 0) {
     throw new Error(
-      'No transactions found in PDF. Please ensure it is a valid BCP format statement.'
+      'No se encontraron transacciones en el PDF. Asegurate de que sea un estado de cuenta en formato Estado de cuenta PDF.'
     );
   }
 
@@ -244,7 +244,7 @@ function validateTransactionConsistency(
   }>
 ): void {
   if (transactions.length === 0) {
-    throw new Error('No transactions found');
+    throw new Error('No se encontraron transacciones');
   }
 
   // Check that debit and credit are not both populated
@@ -252,7 +252,7 @@ function validateTransactionConsistency(
     const tx = transactions[i];
     if (tx.debit > 0.01 && tx.credit > 0.01) {
       console.warn(
-        `Transaction ${i + 1}: Both debit and credit are populated. This may indicate a parsing error.`
+        `Transaccion ${i + 1}: Ambos (debito y credito) estan completos. Esto podria indicar un error de parseo.`
       );
     }
   }
@@ -262,7 +262,7 @@ function validateTransactionConsistency(
     const tx = transactions[i];
     if (tx.debit < 0 || tx.credit < 0) {
       console.warn(
-        `Transaction ${i + 1}: Negative debit or credit detected. This may indicate a parsing error.`
+        `Transaccion ${i + 1}: Se detecto un debito o credito negativo. Esto podria indicar un error de parseo.`
       );
     }
   }

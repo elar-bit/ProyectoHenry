@@ -35,7 +35,7 @@ export default function FileUploadSection({
       if (pdfFile.type === 'application/pdf') {
         onFileSelect(pdfFile);
       } else {
-        alert('Please select a PDF file');
+        alert('Selecciona un archivo PDF');
       }
     }
   };
@@ -50,9 +50,9 @@ export default function FileUploadSection({
   return (
     <div className="space-y-6 rounded-lg bg-white p-8 shadow-sm ring-1 ring-slate-200">
       <div className="space-y-2">
-        <h2 className="text-2xl font-bold text-slate-900">Step 1: Upload File</h2>
+        <h2 className="text-2xl font-bold text-slate-900">Paso 1: Subir archivo</h2>
         <p className="text-slate-600">
-          Select a PDF file containing your bank statement (BCP format)
+          Selecciona un archivo PDF con tu estado de cuenta (Estado de cuenta PDF)
         </p>
       </div>
 
@@ -68,15 +68,15 @@ export default function FileUploadSection({
         </div>
         <div className="space-y-1">
           <p className="font-semibold text-slate-900">
-            Drag and drop your PDF here
+            Arrastra y suelta tu PDF aqui
           </p>
-          <p className="text-sm text-slate-500">or</p>
+          <p className="text-sm text-slate-500">o</p>
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
             className="text-sm font-semibold text-blue-600 hover:text-blue-700"
           >
-            click to browse
+            haz clic para buscar
           </button>
         </div>
         <input
@@ -119,7 +119,7 @@ export default function FileUploadSection({
             }}
             className="text-sm text-slate-600 hover:text-slate-900"
           >
-            Remove
+            Eliminar
           </button>
         </div>
       )}
@@ -149,7 +149,7 @@ export default function FileUploadSection({
         disabled={!file || isProcessing}
         className="w-full rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-blue-700 disabled:bg-slate-300 disabled:text-slate-500"
       >
-        {isProcessing ? 'Processing...' : 'Process & Convert'}
+        {isProcessing ? 'Procesando...' : 'Procesar y convertir'}
       </button>
     </div>
   );

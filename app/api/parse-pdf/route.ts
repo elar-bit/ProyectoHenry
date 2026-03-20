@@ -9,14 +9,14 @@ export async function POST(request: NextRequest) {
 
     if (!file) {
       return NextResponse.json(
-        { error: 'No file provided' },
+        { error: 'No se proporciono un archivo' },
         { status: 400 }
       );
     }
 
     if (file.type !== 'application/pdf') {
       return NextResponse.json(
-        { error: 'File must be a PDF' },
+        { error: 'El archivo debe ser un PDF' },
         { status: 400 }
       );
     }
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
         error:
           error instanceof Error
             ? error.message
-            : 'Failed to parse PDF. Please ensure it is a valid BCP format file.',
+            : 'No se pudo analizar el PDF. Asegurate de que sea un archivo en formato Estado de cuenta PDF.',
       },
       { status: 500 }
     );

@@ -2,15 +2,17 @@
 
 const ProcessingStatus = () => {
   const steps = [
-    { label: 'Extracting text from PDF', icon: '📄' },
-    { label: 'Parsing transactions', icon: '🔍' },
-    { label: 'Cleaning data', icon: '✨' },
-    { label: 'Generating Excel file', icon: '📊' },
+    { label: 'Extrayendo texto del PDF', icon: '📄' },
+    { label: 'Analizando transacciones', icon: '🔍' },
+    { label: 'Limpieza de datos', icon: '✨' },
+    { label: 'Generando archivo de Excel', icon: '📊' },
   ];
 
   return (
     <div className="space-y-4 rounded-lg bg-white p-8 shadow-sm ring-1 ring-slate-200">
-      <h3 className="font-semibold text-slate-900">Processing your file...</h3>
+      <h3 className="font-semibold text-slate-900">
+        Procesando tu archivo...
+      </h3>
       <div className="space-y-3">
         {steps.map((step, index) => (
           <div key={index} className="flex items-center gap-3">

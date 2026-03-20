@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
 
     if (!data.transactions || data.transactions.length === 0) {
       return NextResponse.json(
-        { error: 'No transactions to export' },
+        { error: 'No hay transacciones para exportar' },
         { status: 400 }
       );
     }
@@ -36,11 +36,11 @@ export async function POST(request: NextRequest) {
 
     // Prepare transactions data for Excel
     const excelData = data.transactions.map((tx) => ({
-      Date: tx.date,
-      Description: tx.description,
-      Debit: tx.debit || '',
-      Credit: tx.credit || '',
-      Balance: tx.balance,
+      Fecha: tx.date,
+      Descripcion: tx.description,
+      Debito: tx.debit || '',
+      Credito: tx.credit || '',
+      Saldo: tx.balance,
     }));
 
     // Create main sheet
@@ -117,23 +117,23 @@ export async function POST(request: NextRequest) {
 
     // Create summary sheet
     const summarySheet = XLSX.utils.aoa_to_sheet([
-      ['Bank Statement Summary'],
+      ['Resumen del estado de cuenta'],
       [],
-      ['Account Information'],
-      ['Account Number', data.accountInfo.accountNumber || 'N/A'],
-      ['Total Transactions', data.transactions.length],
+      ['Informacion de la cuenta'],
+      ['Numero de cuenta', data.accountInfo.accountNumber || 'N/A'],
+      ['Transacciones totales', data.transactions.length],
       [],
-      ['Balance Information'],
-      ['Total Debits', data.accountInfo.totalDebits || 0],
-      ['Total Credits', data.accountInfo.totalCredits || 0],
-      ['Report Balance', data.accountInfo.reportBalance || 0],
-      ['Calculated Balance', data.accountInfo.calculatedBalance || 0],
+      ['Informacion de saldo'],
+      ['Total debitos', data.accountInfo.totalDebits || 0],
+      ['Total creditos', data.accountInfo.totalCredits || 0],
+      ['Saldo reportado', data.accountInfo.reportBalance || 0],
+      ['Saldo calculado', data.accountInfo.calculatedBalance || 0],
       [],
       [
-        'Status',
+        'Estado',
         data.accountInfo.reportBalance === data.accountInfo.calculatedBalance
-          ? 'VALID'
-          : 'BALANCE MISMATCH',
+          ? 'VALIDO'
+          : 'DESAJUSTE DE SALDO',
       ],
     ]);
 
@@ -144,9 +144,9 @@ export async function POST(request: NextRequest) {
     XLSX.utils.book_append_sheet(
       workbook,
       worksheet,
-      'Transactions'
+      'Transacciones'
     );
-    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
+    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Resumen');
 
     // Generate file
     const excelBuffer = XLSX.write(workbook, {
@@ -159,7 +159,7 @@ export async function POST(request: NextRequest) {
       headers: {
         'Content-Type':
           'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="bank-statement-${new Date().toISOString().split('T')[0]}.xlsx"`,
+        'Content-Disposition': `attachment; filename="estado-de-cuenta-${new Date().toISOString().split('T')[0]}.xlsx"`,
       },
     });
   } catch (error) {
@@ -169,7 +169,7 @@ export async function POST(request: NextRequest) {
         error:
           error instanceof Error
             ? error.message
-            : 'Failed to generate Excel file',
+            : 'No se pudo generar el archivo de Excel',
       },
       { status: 500 }
     );

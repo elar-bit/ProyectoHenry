@@ -33,13 +33,13 @@ export default function Home() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to parse PDF');
+        throw new Error(errorData.error || 'No se pudo analizar el PDF');
       }
 
       const data = await response.json();
       setParsedData(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(err instanceof Error ? err.message : 'Ocurrio un error');
     } finally {
       setIsProcessing(false);
     }
@@ -57,10 +57,10 @@ export default function Home() {
         {/* Header */}
         <div className="mb-8 text-center">
           <h1 className="text-4xl font-bold text-slate-900">
-            BCP to Excel Converter
+            Convertidor de Estado de cuenta PDF a Excel
           </h1>
           <p className="mt-2 text-lg text-slate-600">
-            Convert your bank statements to clean, organized Excel files in seconds
+            Convierte tus estados de cuenta en archivos de Excel limpios y organizados en segundos
           </p>
         </div>
 
