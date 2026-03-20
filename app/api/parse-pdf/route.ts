@@ -184,28 +184,16 @@ export async function POST(request: NextRequest) {
 
         const result = cleanAndValidateCurrentAccountData(raw, text);
 
-        // Reemplazar "Saldo Contable" por valores extraídos por coordenadas
-        // (el monto más a la derecha en cada fila).
-        try {
-          const saldoTokens = await extractCorrientesSaldoContableByRows(
-            makeArrayBuffer(),
-            result.transactions.length
-          );
-          for (let i = 0; i < result.transactions.length; i++) {
-            if (typeof saldoTokens[i] === 'number') {
-              result.transactions[i].saldoContable =
-                saldoTokens[i] ?? 0;
-            }
-          }
-        } catch {
-          // si falla la extracción de saldo por coordenadas, se mantiene el valor actual (0).
-        }
-
         // Para corregir variaciones del OCR (fechas repetidas que aparecen
         // en un orden no estrictamente cronologico), ordenamos establemente
-        // por `fechaProc` (DD-MM). Esto solo afecta el orden de filas en Excel,
-        // no cambia valores ni columnas.
-        const parseFechaProcDDMM = (s: string): { day: number; month: number } | null => {
+        // por `fechaProc` (DD-MM).
+        //
+        // IMPORTANTE: esto debe ocurrir ANTES de extraer/assignar `saldoContable`,
+        // porque `extractCorrientesSaldoContableByRows` devuelve valores alineados
+        // por índice (mismo orden del array).
+        const parseFechaProcDDMM = (
+          s: string
+        ): { day: number; month: number } | null => {
           const m = (s || '').match(/^(\d{1,2})-(\d{1,2})$/);
           if (!m) return null;
           const day = parseInt(m[1], 10);
@@ -213,20 +201,40 @@ export async function POST(request: NextRequest) {
           if (month < 1 || month > 12 || day < 1 || day > 31) return null;
           return { day, month };
         };
+
         const withParsed = result.transactions.map((tx, idx) => ({
           tx,
           idx,
           parsed: parseFechaProcDDMM(tx.fechaProc),
         }));
+
         withParsed.sort((a, b) => {
           if (!a.parsed && !b.parsed) return a.idx - b.idx;
           if (!a.parsed) return 1;
           if (!b.parsed) return -1;
-          if (a.parsed.month !== b.parsed.month) return a.parsed.month - b.parsed.month;
+          if (a.parsed.month !== b.parsed.month)
+            return a.parsed.month - b.parsed.month;
           if (a.parsed.day !== b.parsed.day) return a.parsed.day - b.parsed.day;
           return a.idx - b.idx;
         });
+
         result.transactions = withParsed.map((x) => x.tx);
+
+        // Reemplazar "Saldo Contable" por valores extraídos por coordenadas
+        // (el monto más a la derecha en cada fila), alineados por índice.
+        try {
+          const saldoTokens = await extractCorrientesSaldoContableByRows(
+            makeArrayBuffer(),
+            result.transactions.length
+          );
+          for (let i = 0; i < result.transactions.length; i++) {
+            if (typeof saldoTokens[i] === 'number') {
+              result.transactions[i].saldoContable = saldoTokens[i] ?? 0;
+            }
+          }
+        } catch {
+          // si falla la extracción de saldo por coordenadas, se mantiene el valor actual (0).
+        }
 
         return NextResponse.json({
           ...result,
