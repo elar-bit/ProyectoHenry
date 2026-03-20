@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pdfParse from 'pdf-parse';
 import { parseTransactions, cleanAndValidateData } from '@/lib/pdf-processor';
+import { extractBCPByColumns } from '@/lib/bcp-extract-by-columns';
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,8 +29,18 @@ export async function POST(request: NextRequest) {
     // Extract text from PDF
     const text = data.text;
 
-    // Parse transactions from text
-    const transactions = parseTransactions(text);
+    // Parse transactions:
+    // 1) Try exact column-based extraction (avoids guessing Debe/Haber)
+    // 2) Fallback to heuristics
+    let transactions = [] as ReturnType<typeof parseTransactions>;
+    try {
+      transactions = await extractBCPByColumns(buffer);
+    } catch (e) {
+      transactions = [];
+    }
+    if (!transactions || transactions.length < 5) {
+      transactions = parseTransactions(text);
+    }
 
     // Clean and validate data
     const result = cleanAndValidateData(transactions, text);
