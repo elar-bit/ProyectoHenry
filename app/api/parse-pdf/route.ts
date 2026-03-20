@@ -69,6 +69,14 @@ export async function POST(request: NextRequest) {
         // - Filtrar desde la primera fecha DD-MM encontrada en esa sección
         //   (sin descartar filas si el OCR no reconoce la fecha en esa línea).
 
+        // Fallback robusto: si los slices fallan, intentamos con el PDF completo.
+        let rawAllFallback: ReturnType<typeof parseTransactions> | null = null;
+        try {
+          rawAllFallback = parseTransactions(text);
+        } catch {
+          // Se maneja al final.
+        }
+
         const activStarts: number[] = [];
         for (let pos = searchFrom; ; ) {
           const idx = upper.indexOf('ACTIVIDADES', pos);
@@ -98,8 +106,20 @@ export async function POST(request: NextRequest) {
         if (!bestRaw || bestRaw.length === 0) {
           // Last resort: intentar desde ESTADO DE CUENTA CORRIENTE o el inicio.
           const fallbackText = searchFrom > 0 ? text.slice(searchFrom) : text;
-          bestRaw = parseTransactions(fallbackText);
-          bestIdxActividades = searchFrom > 0 ? searchFrom : null;
+          try {
+            bestRaw = parseTransactions(fallbackText);
+            bestIdxActividades = searchFrom > 0 ? searchFrom : null;
+          } catch {
+            // Si incluso el fallback falla, usamos el PDF completo (si logró parsear).
+            if (rawAllFallback && rawAllFallback.length > 0) {
+              bestRaw = rawAllFallback;
+              bestIdxActividades = null;
+            } else {
+              throw new Error(
+                'No se encontraron transacciones en los candidatos ni en el fallback.'
+              );
+            }
+          }
         }
 
         const chosenStart = bestIdxActividades ?? searchFrom;
