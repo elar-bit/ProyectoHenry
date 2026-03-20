@@ -1,6 +1,5 @@
 import type { ParsedTransaction } from '@/lib/pdf-processor';
 import { createRequire } from 'module';
-import { pathToFileURL } from 'url';
 
 type ExtractBCPResult = ParsedTransaction[];
 
@@ -104,10 +103,11 @@ export async function extractBCPByColumns(
     workerPath = req.resolve(
       'pdfjs-dist/legacy/build/pdf.worker.mjs'
     ) as string;
-    workerUrl = pathToFileURL(workerPath).toString();
+    workerUrl = workerPath;
     // pdfjs fake-worker uses `workerSrc` as an import specifier.
-    // Use file:// URL so Node ESM can import it.
-    pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+    // In serverless the error indicates it uses filesystem paths directly,
+    // so we set it to the absolute path (no `file://`).
+    pdfjsLib.GlobalWorkerOptions.workerSrc = workerPath;
   } catch {
     // If resolution fails, pdfjs will fall back to its own defaults.
   }
@@ -115,9 +115,8 @@ export async function extractBCPByColumns(
   const doc = await pdfjsLib
     .getDocument({
       data: new Uint8Array(pdfBuffer),
-      // Use the real worker. `disableWorker: true` triggers pdfjs "fake worker"
-      // which is failing in serverless (/var/task/.next/...).
-      disableWorker: false,
+      // Use the fake worker path, but with a valid `workerSrc` import target.
+      disableWorker: true,
       // When eval is available, pdfjs can avoid the fake-worker path that
       // breaks on serverless bundles (/var/task/.next/server/chunks/...).
       // In serverless Node environments, eval is typically supported.
