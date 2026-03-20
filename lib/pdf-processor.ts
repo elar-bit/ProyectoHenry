@@ -7,8 +7,8 @@ function parseLatamNumber(value: string): number {
   // Common OCR/statement placeholders
   if (
     value === '-' ||
-    value === '—' ||
-    value === '–' ||
+    value === '\u2014' || // em dash
+    value === '\u2013' || // en dash
     /^n\/a$/i.test(value) ||
     /^na$/i.test(value)
   ) {
@@ -113,6 +113,24 @@ function extractBalances(
     balances.final = parseLatamNumber(finalMatch[1]);
   }
 
+  // BCP (Viabcp) sometimes prints only "SALDO" header + values at the end.
+  // In that case, the statement includes three numbers near the last "SALDO":
+  //   total debits, total credits, final balance
+  if (balances.final === undefined) {
+    const lower = text.toLowerCase();
+    const lastSaldoIndex = lower.lastIndexOf('saldo');
+    if (lastSaldoIndex !== -1) {
+      const after = text.slice(lastSaldoIndex);
+      const tokens = after.match(/\d[\d.,]*/g) || [];
+      // Heuristic: keep currency-like tokens (usually have ',' thousands or '.' decimals).
+      const currencyTokens = tokens.filter((t) => t.includes(',') || t.includes('.'));
+      if (currencyTokens.length > 0) {
+        const lastToken = currencyTokens[currencyTokens.length - 1];
+        balances.final = parseLatamNumber(lastToken);
+      }
+    }
+  }
+
   return balances;
 }
 
@@ -136,19 +154,130 @@ export function parseTransactions(text: string): ParsedTransaction[] {
   // Split by lines
   const lines = text.split('\n');
 
+  // Strategy 1: BCP statement format as seen in your PDF:
+  //   02FEB 02FEB <DESCRIPCION> [*] <MONTO>
+  const monthMap: Record<string, string> = {
+    JAN: '01',
+    ENE: '01',
+    FEB: '02',
+    MAR: '03',
+    ABR: '04',
+    APR: '04',
+    MAY: '05',
+    JUN: '06',
+    JUL: '07',
+    AGO: '08',
+    AUG: '08',
+    SET: '09',
+    SEP: '09',
+    OCT: '10',
+    NOV: '11',
+    DIC: '12',
+    DEC: '12',
+  };
+
+  const rangeYearMatch = text.match(/DEL\s+\d{2}\/\d{2}\/(\d{2})\s+AL\s+\d{2}\/\d{2}\/\d{2}/i);
+  const inferredYear = rangeYearMatch ? 2000 + parseInt(rangeYearMatch[1], 10) : undefined;
+
+  for (const originalLine of lines) {
+    const line = originalLine.trim();
+    if (!line) continue;
+
+    // Example: "02FEB 02FEB Pago YAPE de 19107 50.50"
+    const dateMatch = line.match(/^(\d{1,2})([A-Z]{3})\s+(\d{1,2})([A-Z]{3})\s+(.+)$/);
+    if (!dateMatch) continue;
+
+    const dayStr = dateMatch[1];
+    const monthStr = dateMatch[2];
+    const rest = dateMatch[5];
+
+    const monthNum = monthMap[monthStr];
+    if (!monthNum || inferredYear === undefined) continue;
+
+    const date = `${String(dayStr).padStart(2, '0')}/${monthNum}/${inferredYear}`;
+
+    // Extract the last "amount" from the end of the line. OCR sometimes has a '*' before it.
+    // Example: "ABON PLIN-... S * 40.00" or "IMPUESTO ITF * 0.05"
+    const amountMatch = rest.match(
+      /^(.*?)(?:\s*\*\s*)?([-\u2013\u2014]|\(?-?\d[\d.,\s]*\)?|\d[\d.,]*\d)\s*$/
+    );
+    if (!amountMatch) continue;
+
+    const descPart = amountMatch[1].trim();
+    const amountToken = amountMatch[2].trim();
+    const amount = parseLatamNumber(amountToken);
+
+    // If we cannot parse a number, skip.
+    if (Number.isNaN(amount)) continue;
+
+    const descUpper = descPart.toUpperCase();
+
+    const hasHK = descUpper.includes('.HK') || /\bHK\b/.test(descUpper) || descUpper.includes('CRZ');
+    const hasBM = descUpper.includes('.BM') || /\bBM\b/.test(descUpper) || descUpper.includes('CMB');
+
+    const looksCredit =
+      /\bABON\b/.test(descUpper) ||
+      /\bABONO\b/.test(descUpper) ||
+      /\bDEPOSITO\b/.test(descUpper) ||
+      /\bDEP\.?EN\b/.test(descUpper) ||
+      /\bDEP\.?\b/.test(descUpper) ||
+      /INTERES/.test(descUpper) ||
+      hasHK;
+
+    const looksDebit =
+      /\bPAGO\b/.test(descUpper) ||
+      /\bRET\./.test(descUpper) ||
+      /\bIMPUESTO\b/.test(descUpper) ||
+      /\bITF\b/.test(descUpper) ||
+      /\bTRANSF\b/.test(descUpper) ||
+      /\bTRANSFER\b/.test(descUpper) ||
+      /MANT/i.test(descUpper) ||
+      /\bOPE\.?VENTANILLA\b/.test(descUpper) ||
+      hasBM;
+
+    let debitStr = '';
+    let creditStr = '';
+
+    if (looksCredit && !looksDebit) {
+      creditStr = amountToken;
+    } else if (looksDebit && !looksCredit) {
+      debitStr = amountToken;
+    } else {
+      // If both heuristics trigger (rare), use HK/BM hints.
+      if (hasHK && !hasBM) {
+        creditStr = amountToken;
+      } else if (hasBM && !hasHK) {
+        debitStr = amountToken;
+      } else {
+        // Default to debit for ambiguous cases.
+        debitStr = amountToken;
+      }
+    }
+
+    // Balance will be computed later as a running balance.
+    transactions.push({
+      date,
+      description: cleanDescription(descPart),
+      debit: debitStr,
+      credit: creditStr,
+      balance: '',
+      raw: line,
+    });
+  }
+
+  // If we successfully parsed BCP transactions, return them.
+  if (transactions.length > 0) {
+    return transactions;
+  }
+
+  // Strategy 2: generic "DD/MM/YYYY <desc> <debit> <credit> <balance>" format
   let i = 0;
   while (i < lines.length) {
     const line = lines[i].trim();
 
     // Transaction line pattern: DATE DESCRIPTION DEBIT CREDIT BALANCE
-    // Date format: DD/MM/YYYY, DD-MM-YYYY or DD.MM.YYYY
-    const normalizedLine = line
-      // Common currency tokens that may appear glued to numbers
-      .replace(/S\//gi, '')
-      .replace(/[$€£]/g, '')
-      .replace(/\b(USD|PEN|MXN|DOLARES|SOLES)\b/gi, '');
-
-    const transactionMatch = normalizedLine.match(
+    // Date format: DD/MM/YYYY or DD-MM-YYYY
+    const transactionMatch = line.match(
       /^(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4})\s+(.+?)\s+([\d.,\s\-\(\)]+)\s+([\d.,\s\-\(\)]+)\s+([\d.,\s\-\(\)]+)\s*$/
     );
 
@@ -181,7 +310,7 @@ export function parseTransactions(text: string): ParsedTransaction[] {
         const nextLine = lines[j].trim();
         if (
           nextLine &&
-          !nextLine.match(/^[\d.,\s\-\(\)]+$/) // Skip lines that are just numbers
+          !nextLine.match(/^[\d.,\s\-\(\)]+$/)
         ) {
           fullDescription += ' ' + nextLine;
         }
@@ -244,7 +373,8 @@ export function cleanAndValidateData(
     description: tx.description,
     debit: parseLatamNumber(tx.debit),
     credit: parseLatamNumber(tx.credit),
-    balance: parseLatamNumber(tx.balance),
+    // Balance is computed later as a running balance.
+    balance: 0,
   }));
 
   // Validate transaction consistency
@@ -253,24 +383,26 @@ export function cleanAndValidateData(
   // Calculate totals for validation
   let totalDebits = 0;
   let totalCredits = 0;
-  let calculatedBalance =
-    cleanedTransactions.length > 0 ? cleanedTransactions[0].balance : 0;
+  let runningBalance = balances.initial || 0;
 
   for (const tx of cleanedTransactions) {
     if (tx.debit > 0) totalDebits += tx.debit;
     if (tx.credit > 0) totalCredits += tx.credit;
+
+    // Running balance: initial - debits + credits
+    runningBalance = runningBalance - tx.debit + tx.credit;
+    tx.balance = runningBalance;
   }
 
-  // Set calculated final balance
-  if (cleanedTransactions.length > 0) {
-    calculatedBalance = cleanedTransactions[cleanedTransactions.length - 1].balance;
-  }
+  const calculatedBalance =
+    cleanedTransactions.length > 0
+      ? cleanedTransactions[cleanedTransactions.length - 1].balance
+      : runningBalance;
 
-  const reportBalance = balances.final || calculatedBalance;
+  const reportBalance = balances.final ?? calculatedBalance;
 
   // Check for balance mismatch
-  const balanceMatch =
-    Math.abs(reportBalance - calculatedBalance) < 0.01; // Allow for rounding
+  const balanceMatch = Math.abs(reportBalance - calculatedBalance) < 0.01; // Allow for rounding
 
   return {
     transactions: cleanedTransactions,
