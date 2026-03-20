@@ -1,4 +1,5 @@
 import type { ParsedTransaction } from '@/lib/pdf-processor';
+import { pathToFileURL } from 'url';
 
 type ExtractBCPResult = ParsedTransaction[];
 
@@ -86,15 +87,17 @@ export async function extractBCPByColumns(
 ): Promise<ExtractBCPResult> {
   // pdfjs-dist is only needed on server side.
   const pdfjsLib: any = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  // In Next.js/Turbopack, worker resolution can fail if `workerSrc` is not set.
-  // We resolve the worker file from node_modules and force `workerSrc` to a valid path.
+  // In Next.js/Turbopack, worker resolution can fail.
+  // We resolve `pdf.worker.mjs` from node_modules and pass an explicit URL.
+  let workerSrcUrl: string | undefined;
   try {
     // eslint-disable-next-line @typescript-eslint/no-implied-eval
     const req = (0, eval)('require') as NodeRequire;
     const workerPath = req.resolve(
       'pdfjs-dist/legacy/build/pdf.worker.mjs'
     ) as string;
-    pdfjsLib.GlobalWorkerOptions.workerSrc = workerPath;
+    workerSrcUrl = pathToFileURL(workerPath).toString();
+    pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrcUrl;
   } catch {
     // If resolution fails, pdfjs will fall back to its own defaults.
   }
@@ -102,7 +105,9 @@ export async function extractBCPByColumns(
   const doc = await pdfjsLib
     .getDocument({
       data: new Uint8Array(pdfBuffer),
-      disableWorker: true,
+      // Avoid "fake worker" paths: use the real worker if possible.
+      disableWorker: false,
+      ...(workerSrcUrl ? { workerSrc: workerSrcUrl } : {}),
       isEvalSupported: false,
       useWorkerFetch: false,
     })
