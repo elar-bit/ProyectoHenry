@@ -118,7 +118,10 @@ export async function extractBCPByColumns(
       // Avoid creating real Worker threads in serverless; use fake-worker,
       // but with a valid `workerSrc` path so it can import the module.
       disableWorker: true,
-      isEvalSupported: false,
+      // When eval is available, pdfjs can avoid the fake-worker path that
+      // breaks on serverless bundles (/var/task/.next/server/chunks/...).
+      // In serverless Node environments, eval is typically supported.
+      isEvalSupported: true,
       useWorkerFetch: false,
       ...(workerUrl ? { workerSrc: workerUrl } : {}),
     })
