@@ -155,6 +155,7 @@ export interface ParsedTransaction {
   description: string;
   debit: string;
   credit: string;
+  saldoContable?: string;
   raw?: string;
 }
 
@@ -355,7 +356,8 @@ export function parseTransactions(text: string): ParsedTransaction[] {
     if (inferredYear !== undefined) {
       const dmRegex = /^(\d{1,2})-(\d{1,2})\s+(.+)$/;
 
-      for (const originalLine of lines) {
+      for (let li = 0; li < lines.length; li++) {
+        const originalLine = lines[li];
         const line = originalLine.trim();
         if (!line) continue;
 
@@ -409,6 +411,18 @@ export function parseTransactions(text: string): ParsedTransaction[] {
 
         const isTrailingNegative = amountTokenRaw.endsWith('-');
 
+        // Optional: some "cuentas corrientes" PDFs OCR split "Saldo Contable"
+        // into the next line as a standalone number.
+        // We'll try to capture it as a single money token on the immediate next line.
+        let saldoContableTokenRaw: string | undefined;
+        const next = lines[li + 1]?.trim();
+        if (next && !dmRegex.test(next)) {
+          const saldoMatch = next.match(
+            /^-?\d[\d,]*\.\d{2}-?$|^-?\d{1,3}(?:,\d{3})*\.\d{2}-?$/
+          );
+          if (saldoMatch) saldoContableTokenRaw = saldoMatch[0];
+        }
+
         let debitStr = '';
         let creditStr = '';
 
@@ -437,8 +451,12 @@ export function parseTransactions(text: string): ParsedTransaction[] {
           description: cleanDescription(descPart),
           debit: debitStr,
           credit: creditStr,
+          saldoContable: saldoContableTokenRaw,
           raw: line,
         });
+
+        // If we consumed the next line for saldo contable, skip it.
+        if (saldoContableTokenRaw) li++;
       }
 
       if (transactions.length > 0) {
@@ -686,10 +704,12 @@ export function cleanAndValidateCurrentAccountData(
       origen: parsed.origen,
       tipo: parsed.tipo,
       cargoAbono,
-      // Hoy no podemos extraer una "Saldo Contable" separada por OCR;
-      // para que la columna no salga vacía, usamos el único valor monetario
-      // disponible por fila (cargo/abono).
-      saldoContable: cargoAbono,
+      // Si el OCR "Saldo Contable" vino en una línea separada,
+      // lo capturamos en `tx.saldoContable`. Si no, dejamos vacío (0).
+      saldoContable:
+        tx.saldoContable !== undefined && tx.saldoContable !== null
+          ? parseLatamNumber(tx.saldoContable)
+          : 0,
     };
   });
 
