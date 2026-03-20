@@ -31,25 +31,26 @@ export async function POST(request: NextRequest) {
     const text = data.text;
 
     // Parse transactions:
-    // 1) pdfplumber (Python): tablas + palabras alineadas a encabezados DEBE/HABER
-    // 2) pdfjs-dist en TypeScript (sin Python / Vercel)
+    // 1) pdfjs-dist en TypeScript (mas estable en estos estados BCP)
+    // 2) pdfplumber (Python) como respaldo
     // 3) Heurísticas sobre texto plano
     let transactions = [] as ReturnType<typeof parseTransactions>;
-    let parserSource: 'pdfplumber' | 'pdfjs-columns' | 'heuristic-text' = 'heuristic-text';
+    let parserSource: 'pdfplumber' | 'pdfjs-columns' | 'heuristic-text' =
+      'heuristic-text';
     try {
-      const plumb = extractWithPdfPlumber(buffer);
-      if (plumb && plumb.length > 0) {
-        transactions = plumb;
-        parserSource = 'pdfplumber';
+      transactions = await extractBCPByColumns(buffer);
+      if (transactions.length > 0) {
+        parserSource = 'pdfjs-columns';
       }
     } catch {
       transactions = [];
     }
     if (!transactions || transactions.length === 0) {
       try {
-        transactions = await extractBCPByColumns(buffer);
-        if (transactions.length > 0) {
-          parserSource = 'pdfjs-columns';
+        const plumb = extractWithPdfPlumber(buffer);
+        if (plumb && plumb.length > 0) {
+          transactions = plumb;
+          parserSource = 'pdfplumber';
         }
       } catch {
         transactions = [];
