@@ -399,12 +399,25 @@ export function parseTransactions(text: string): ParsedTransaction[] {
         if (!amountMatch) {
           const nextLine2 = lines[li + 1]?.trim();
           if (nextLine2 && !dmRegex.test(nextLine2)) {
-            const combined = `${rest} ${nextLine2}`.trim();
-            const maybeAmount = combined.match(amountRegex);
-            if (maybeAmount) {
-              rest = combined;
-              amountMatch = maybeAmount;
+            const combined2 = `${rest} ${nextLine2}`.trim();
+            let maybeAmount2 = combined2.match(amountRegex);
+
+            if (maybeAmount2) {
+              rest = combined2;
+              amountMatch = maybeAmount2;
               li++; // Consumimos la línea adicional para este movimiento.
+            } else {
+              // OCR a veces parte aún más: intentamos con una tercera línea.
+              const nextLine3 = lines[li + 2]?.trim();
+              if (nextLine3 && !dmRegex.test(nextLine3)) {
+                const combined3 = `${rest} ${nextLine2} ${nextLine3}`.trim();
+                const maybeAmount3 = combined3.match(amountRegex);
+                if (maybeAmount3) {
+                  rest = combined3;
+                  amountMatch = maybeAmount3;
+                  li += 2; // Consumimos dos líneas extra para este movimiento.
+                }
+              }
             }
           }
         }
