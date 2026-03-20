@@ -1,5 +1,4 @@
 import type { ParsedTransaction } from '@/lib/pdf-processor';
-import { pathToFileURL } from 'url';
 import { createRequire } from 'module';
 
 type ExtractBCPResult = ParsedTransaction[];
@@ -97,14 +96,15 @@ export async function extractBCPByColumns(
   const pdfjsLib: any = await import('pdfjs-dist/legacy/build/pdf.mjs');
   // In serverless/Next chunks, resolving worker paths via `eval('require')`
   // can fail. Use createRequire so `pdfjs-dist` can load the worker file.
-  let workerSrcUrl: string | undefined;
+  let workerPath: string | undefined;
   try {
-    const req = createRequire(import.meta.url);
-    const workerPath = req.resolve(
+    const req = createRequire(`${process.cwd()}/package.json`);
+    workerPath = req.resolve(
       'pdfjs-dist/legacy/build/pdf.worker.mjs'
     ) as string;
-    workerSrcUrl = pathToFileURL(workerPath).toString();
-    pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrcUrl;
+    // pdfjs fake-worker uses `workerSrc` as an import specifier.
+    // Provide an absolute filesystem path.
+    pdfjsLib.GlobalWorkerOptions.workerSrc = workerPath;
   } catch {
     // If resolution fails, pdfjs will fall back to its own defaults.
   }
@@ -112,11 +112,12 @@ export async function extractBCPByColumns(
   const doc = await pdfjsLib
     .getDocument({
       data: new Uint8Array(pdfBuffer),
-      // Use the real worker when possible; avoids "fake worker" setup failures.
-      disableWorker: false,
+      // Avoid creating real Worker threads in serverless; use fake-worker,
+      // but with a valid `workerSrc` path so it can import the module.
+      disableWorker: true,
       isEvalSupported: false,
       useWorkerFetch: false,
-      ...(workerSrcUrl ? { workerSrc: workerSrcUrl } : {}),
+      ...(workerPath ? { workerSrc: workerPath } : {}),
     })
     .promise;
 
