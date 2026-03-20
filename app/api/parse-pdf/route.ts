@@ -58,32 +58,70 @@ export async function POST(request: NextRequest) {
       const searchFrom = idxCorriente >= 0 ? idxCorriente : 0;
 
       try {
-        // Solución robusta:
-        // - Parseamos TODO el PDF para no perder filas finales (ej. 31-01).
-        // - Luego filtramos para que el resultado empiece en la sección de "ACTIVIDADES"
-        //   de "ESTADO DE CUENTA CORRIENTE".
-        const rawAll = parseTransactions(text);
+        // Parsear TODO el PDF a veces falla (0 transacciones) porque incluye ruido
+        // de otras secciones. Para "Corrientes" debe iniciarse desde "ACTIVIDADES",
+        // y además necesitamos conservar filas finales (ej. 31-01).
+        //
+        // Estrategia:
+        // - Probar múltiples ocurrencias de "ACTIVIDADES" (todas las que estén después
+        //   de "ESTADO DE CUENTA CORRIENTE").
+        // - Quedarnos con la que produzca más transacciones.
+        // - Filtrar desde la primera fecha DD-MM encontrada en esa sección
+        //   (sin descartar filas si el OCR no reconoce la fecha en esa línea).
 
-        const idxActividades = upper.indexOf('ACTIVIDADES', searchFrom);
-        const tail = idxActividades >= 0 ? text.slice(idxActividades) : '';
-        const ddmmMatch = tail.match(/\b(\d{1,2})-(\d{1,2})\b/);
+        const activStarts: number[] = [];
+        for (let pos = searchFrom; ; ) {
+          const idx = upper.indexOf('ACTIVIDADES', pos);
+          if (idx < 0) break;
+          activStarts.push(idx);
+          pos = idx + 'ACTIVIDADES'.length;
+        }
 
-        const raw =
-          ddmmMatch && ddmmMatch[1] && ddmmMatch[2]
-            ? (() => {
-                const dd = parseInt(ddmmMatch[1], 10);
-                const mm = parseInt(ddmmMatch[2], 10);
-                return rawAll.filter((tx) => {
-                  const m = tx.fechaProc.match(/^(\d{1,2})-(\d{1,2})$/);
-                  // Si el OCR no logra un "DD-MM" limpio, no descartamos la fila;
-                  // el extractor debe conservar esas filas (especialmente al final de página).
-                  if (!m) return true;
-                  const d = parseInt(m[1], 10);
-                  const mon = parseInt(m[2], 10);
-                  return mon === mm && d >= dd;
-                });
-              })()
-            : rawAll;
+        let bestRaw: ReturnType<typeof parseTransactions> | null = null;
+        let bestIdxActividades: number | null = null;
+
+        for (const idxActividades of activStarts.length ? activStarts : [searchFrom]) {
+          try {
+            const candidateText = text.slice(idxActividades);
+            const candidateRaw = parseTransactions(candidateText);
+            if (candidateRaw && candidateRaw.length > 0) {
+              if (!bestRaw || candidateRaw.length > bestRaw.length) {
+                bestRaw = candidateRaw;
+                bestIdxActividades = idxActividades;
+              }
+            }
+          } catch {
+            // Try next ACTIVIDADES occurrence.
+          }
+        }
+
+        if (!bestRaw || bestRaw.length === 0) {
+          // Last resort: intentar desde ESTADO DE CUENTA CORRIENTE o el inicio.
+          const fallbackText = searchFrom > 0 ? text.slice(searchFrom) : text;
+          bestRaw = parseTransactions(fallbackText);
+          bestIdxActividades = searchFrom > 0 ? searchFrom : null;
+        }
+
+        const chosenStart = bestIdxActividades ?? searchFrom;
+        const candidateTail = text.slice(chosenStart);
+        const ddmmMatch = candidateTail.match(/\b(\d{1,2})-(\d{1,2})\b/);
+
+        const raw = (() => {
+          if (!ddmmMatch || !ddmmMatch[1] || !ddmmMatch[2]) return bestRaw!;
+          const dd = parseInt(ddmmMatch[1], 10);
+          const mm = parseInt(ddmmMatch[2], 10);
+          const filtered = bestRaw!.filter((tx) => {
+            const m = tx.fechaProc.match(/^(\d{1,2})-(\d{1,2})$/);
+            // Si el OCR no logra un "DD-MM" limpio, no descartamos la fila;
+            // el extractor debe conservar esas filas (especialmente al final de página).
+            if (!m) return true;
+            const d = parseInt(m[1], 10);
+            const mon = parseInt(m[2], 10);
+            return mon === mm && d >= dd;
+          });
+          // Nunca devolvemos vacío solo por un match parcial del OCR.
+          return filtered.length > 0 ? filtered : bestRaw!;
+        })();
 
         const result = cleanAndValidateCurrentAccountData(raw, text);
 
@@ -111,8 +149,15 @@ export async function POST(request: NextRequest) {
           extractionVersion: 'current-12col-from-actividades',
           parserDebug: {
             idxCorriente,
-            idxActividades,
-            ddmmThreshold: ddmmMatch?.[0] ?? null,
+            idxActividades: bestIdxActividades,
+            ddmmThreshold: (() => {
+              const chosenStart = bestIdxActividades ?? searchFrom;
+              const candidateTail = text.slice(chosenStart);
+              const m = candidateTail.match(/\b(\d{1,2})-(\d{1,2})\b/);
+              return m?.[0] ?? null;
+            })(),
+            activacionesProbadas: activStarts.length,
+            bestTxCount: bestRaw?.length ?? 0,
           },
         });
       } catch (e) {
