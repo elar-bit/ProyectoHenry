@@ -694,12 +694,6 @@ function parseCurrentAccountDescription(desc: string): {
 
   const iOrigen = iTipo >= 1 ? iTipo - 1 : -1;
 
-  // If HORA is present, we can parse the full structured tail.
-  // Otherwise we only populate ORIGEN + TIPO and keep the rest blank.
-  const iNumOp = iHora >= 1 ? iHora - 1 : -1;
-  const iLugar = iNumOp >= 1 ? iNumOp - 1 : -1;
-  const iMedat = iLugar >= 1 ? iLugar - 1 : -1;
-
   // If we can't even find TIPO, return everything as description.
   if (iTipo < 0 || iOrigen < 0) {
     return {
@@ -714,17 +708,44 @@ function parseCurrentAccountDescription(desc: string): {
     };
   }
 
+  // When HORA is missing, we still want to parse ORIGEN + TIPO, and
+  // in some cases (like "ENVIO... INT 191-000 872869 4991") the token
+  // before ORIGEN looks like SUC-AGE (e.g. "191-000"). If it matches,
+  // we fill Medat/SUC-AGE as well to avoid leaving them in Descripcion.
+  const horaMissing = iHora < 0;
+  const iNumOp = iHora >= 1 ? iHora - 1 : -1;
+  const iLugar = iNumOp >= 1 ? iNumOp - 1 : -1;
+  const iMedat = iLugar >= 1 ? iLugar - 1 : -1;
+
+  const sucAgeCandidate = horaMissing && iOrigen - 1 >= 0 ? tokens[iOrigen - 1] : '';
+  const sucAgeLike = horaMissing
+    ? /^\d{1,4}-\d{1,3}$/.test(sucAgeCandidate) || /^\d{3}-\d{3}$/.test(sucAgeCandidate)
+    : false;
+
+  const iLugarNoHora = sucAgeLike ? iOrigen - 1 : -1;
+  const iMedatNoHora = sucAgeLike ? iOrigen - 2 : -1;
+
   return {
     descripcion:
+      // If HORA exists, use full structured mapping.
+      // If HORA missing but we detected SUC-AGE-like token, remove medat/sucAge
+      // from the description too.
       iHora >= 0 && iMedat >= 0
         ? tokens.slice(0, iMedat).join(' ').trim()
-        : tokens.slice(0, iOrigen).join(' ').trim(),
-    medat: iMedat >= 0 ? tokens[iMedat] || '' : '',
+        : iMedatNoHora >= 0
+          ? tokens.slice(0, iMedatNoHora).join(' ').trim()
+          : tokens.slice(0, iOrigen).join(' ').trim(),
+    medat:
+      iHora >= 0 && iMedat >= 0
+        ? tokens[iMedat] || ''
+        : iMedatNoHora >= 0
+          ? tokens[iMedatNoHora] || ''
+          : '',
     // En este formato, lo que OCR reporta en la cola suele corresponder a
     // "SUC-AGE" (no a "Lugar"). Dejamos "Lugar" vacío y movemos el token.
     lugar: '',
-    sucAge: iLugar >= 0 ? tokens[iLugar] || '' : '',
-    numOp: iNumOp >= 0 ? tokens[iNumOp] || '' : '',
+    sucAge: iHora >= 0 ? (iLugar >= 0 ? tokens[iLugar] || '' : '') : (iLugarNoHora >= 0 ? tokens[iLugarNoHora] || '' : ''),
+    numOp: iHora >= 0 ? (iNumOp >= 0 ? tokens[iNumOp] || '' : '') : '',
     hora: iHora >= 0 ? tokens[iHora] : '',
     origen: tokens[iOrigen] || '',
     tipo: tokens[iTipo] || '',
