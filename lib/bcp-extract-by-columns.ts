@@ -98,6 +98,7 @@ export async function extractBCPByColumns(
   // In serverless/Next chunks, resolving worker paths via `eval('require')`
   // can fail. Use createRequire so `pdfjs-dist` can load the worker file.
   let workerUrl: string | undefined;
+  let workerPath: string | undefined;
   try {
     const req = createRequire(`${process.cwd()}/package.json`);
     workerPath = req.resolve(
