@@ -163,20 +163,6 @@ export default function ResultsPreview({
             {data.transactions.length}
           </p>
         </div>
-        <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-slate-200">
-          <p className="text-sm text-slate-600">Número de cuenta</p>
-          <p className="mt-1 text-xl font-semibold text-slate-900">
-            {data.accountInfo.accountNumber || 'N/A'}
-          </p>
-        </div>
-        <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-slate-200">
-          <p className="text-sm text-slate-600">Saldo final</p>
-          <p className="mt-1 text-xl font-semibold text-slate-900">
-            {typeof data.accountInfo.calculatedBalance === 'number'
-              ? formatMoney(data.accountInfo.calculatedBalance)
-              : 'N/A'}
-          </p>
-        </div>
         {(data.parserSource || data.extractionVersion) && (
           <div className="mt-3 text-xs text-slate-500">
             Motor: {data.parserSource || 'desconocido'} | Version:{' '}
