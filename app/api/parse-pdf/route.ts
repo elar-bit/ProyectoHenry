@@ -77,8 +77,14 @@ export async function POST(request: NextRequest) {
           /(ESTADO\s+DE\s+CUENTA\s+CORRIENTE|IMPORT\s*&\s*EXPORT)/i.test(text);
 
         if (looksLikeAltBCP) {
+          // Requisito: este formato debe iniciar el parseo desde la sección
+          // "ACTIVIDADES" para no incluir encabezados previos.
+          const idxActividades = text.toUpperCase().indexOf('ACTIVIDADES');
+          const textFromActividades =
+            idxActividades >= 0 ? text.slice(idxActividades) : text;
+
           try {
-            transactions = parseTransactions(text);
+            transactions = parseTransactions(textFromActividades);
             parserSource = 'heuristic-text';
           } catch {
             // Fall through to 422 below
