@@ -34,7 +34,14 @@ function isAmountToken(str: string) {
   //  - .85-
   //  - 0.05
   const s = str.trim();
-  return /^-?\d[\d,]*([.]\d+)?$/.test(s) || /^[\d,]+\.\d+$/.test(s) || /^[-.]?\d[\d,]*([.]\d+)?-?$/.test(s);
+  // dot-decimal (US-ish): 1,234.56 / 686.00 / .85-
+  const dotDecimal =
+    /^-?\d[\d,]*([.]\d+)?-?$/.test(s) || /^[\d,]+\.\d+-?$/.test(s);
+  // comma-decimal (LATAM): 500,00 / 1.234,56 / 1,234,56 (rare OCR)
+  const commaDecimal =
+    /^-?\d+,\d{1,2}-?$/.test(s) ||
+    /^-?\d{1,3}(?:\.\d{3})+,\d{1,2}-?$/.test(s);
+  return dotDecimal || commaDecimal;
 }
 
 function parseFechaTokenFromCombined(str: string) {
@@ -105,9 +112,8 @@ export async function extractBCPByColumns(
   const doc = await pdfjsLib
     .getDocument({
       data: new Uint8Array(pdfBuffer),
-      // Avoid "fake worker" paths: use the real worker if possible.
-      disableWorker: false,
-      ...(workerSrcUrl ? { workerSrc: workerSrcUrl } : {}),
+      // Avoid worker resolution issues: parse in-process.
+      disableWorker: true,
       isEvalSupported: false,
       useWorkerFetch: false,
     })
@@ -199,7 +205,7 @@ export async function extractBCPByColumns(
       const amountCandidates = rowItems
         .filter((it) => {
           const str = (it.str ?? '').toString().trim();
-          return str.includes('.') && isAmountToken(str);
+          return isAmountToken(str);
         })
         .sort((a, b) => b.x - a.x);
       if (amountCandidates.length === 0) continue;
