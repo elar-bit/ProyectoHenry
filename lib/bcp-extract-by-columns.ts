@@ -115,9 +115,9 @@ export async function extractBCPByColumns(
   const doc = await pdfjsLib
     .getDocument({
       data: new Uint8Array(pdfBuffer),
-      // Avoid creating real Worker threads in serverless; use fake-worker,
-      // but with a valid `workerSrc` path so it can import the module.
-      disableWorker: true,
+      // Use the real worker. `disableWorker: true` triggers pdfjs "fake worker"
+      // which is failing in serverless (/var/task/.next/...).
+      disableWorker: false,
       // When eval is available, pdfjs can avoid the fake-worker path that
       // breaks on serverless bundles (/var/task/.next/server/chunks/...).
       // In serverless Node environments, eval is typically supported.
