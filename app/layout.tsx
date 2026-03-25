@@ -7,8 +7,8 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'PDF a Excel | Henry Gomez',
-  description: 'Creado por EB',
+  title: 'Coincidencia Excel | Grupo Gomez',
+  description: 'Herramienta de coincidencia entre dos archivos Excel',
   generator: 'v0.app',
   icons: {
     icon: [
