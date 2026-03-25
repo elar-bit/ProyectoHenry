@@ -38,6 +38,20 @@ function candidateLabel(c: Record<string, string>, copyCols: string[]): string {
   return copyCols.map((cname) => `${cname}: ${c[cname] ?? ''}`).join(' · ')
 }
 
+/** Más ancho para columnas típicas de identificación (RUC, DNI, etc.). */
+function isRucOrDniHeader(label: string): boolean {
+  const s = label.toLowerCase()
+  return (
+    s.includes('ruc') ||
+    s.includes('dni') ||
+    s.includes('cédula') ||
+    s.includes('cedula')
+  )
+}
+
+const selectTriggerWideClass =
+  'h-auto min-h-10 w-full whitespace-normal text-left [&_[data-slot=select-value]]:line-clamp-none [&_[data-slot=select-value]]:whitespace-normal'
+
 export default function ExcelMatchWorkflow() {
   const [step, setStep] = useState<Step>(1)
 
@@ -467,23 +481,34 @@ export default function ExcelMatchWorkflow() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="overflow-x-auto rounded-md border">
-              <table className="w-full min-w-[640px] text-left text-sm">
+            <div className="-mx-1 overflow-x-auto rounded-md border sm:mx-0">
+              <table className="w-full min-w-[960px] table-auto text-left text-sm">
                 <thead className="bg-slate-50">
                   <tr>
                     {table1.headers.map((h) => (
-                      <th key={h} className="border-b px-2 py-2 font-medium">
+                      <th
+                        key={h}
+                        className="border-b px-3 py-2.5 text-xs font-medium sm:text-sm"
+                      >
                         {h}
                       </th>
                     ))}
-                    {copyCols.map((c) => (
-                      <th
-                        key={c}
-                        className="border-b px-2 py-2 font-medium text-emerald-800"
-                      >
-                        {finalBySheet2[c] ?? c}
-                      </th>
-                    ))}
+                    {copyCols.map((c) => {
+                      const label = finalBySheet2[c] ?? c
+                      const firstAdded = copyCols[0] === c
+                      return (
+                        <th
+                          key={c}
+                          className={cn(
+                            'border-b px-3 py-2.5 text-xs font-medium text-emerald-800 sm:text-sm',
+                            firstAdded && 'min-w-[22rem]',
+                            isRucOrDniHeader(label) && 'min-w-[22rem]',
+                          )}
+                        >
+                          {label}
+                        </th>
+                      )
+                    })}
                   </tr>
                 </thead>
                 <tbody>
@@ -492,45 +517,66 @@ export default function ExcelMatchWorkflow() {
                     return (
                       <tr key={ri} className="border-b border-slate-100">
                         {table1.headers.map((h) => (
-                          <td key={h} className="max-w-[200px] truncate px-2 py-2">
+                          <td
+                            key={h}
+                            className="max-w-[220px] truncate px-3 py-2.5 align-top text-xs sm:text-sm"
+                          >
                             {row[h] === null || row[h] === undefined
                               ? ''
                               : String(row[h])}
                           </td>
                         ))}
-                        {copyCols.map((c, ci) => (
-                          <td key={c} className="px-2 py-2 align-top">
-                            {st?.kind === 'ambiguous' && ci === 0 ? (
-                              <Select
-                                value={String(st.selectedIndex)}
-                                onValueChange={(v) =>
-                                  setAmbiguousSelection(ri, Number(v))
-                                }
-                              >
-                                <SelectTrigger className="h-auto min-h-9 w-[min(100%,320px)] max-w-full whitespace-normal text-left">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {st.candidates.map((cand, idx) => (
-                                    <SelectItem
-                                      key={idx}
-                                      value={String(idx)}
-                                      className="whitespace-normal"
-                                    >
-                                      {candidateLabel(cand, copyCols)}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            ) : st?.kind === 'ambiguous' ? (
-                              <span>{resolveRowValue(st, c)}</span>
-                            ) : (
-                              <span>
-                                {st ? resolveRowValue(st, c) : 'Sin Datos'}
-                              </span>
-                            )}
-                          </td>
-                        ))}
+                        {copyCols.map((c, ci) => {
+                          const label = finalBySheet2[c] ?? c
+                          const firstAdded = copyCols[0] === c
+                          return (
+                            <td
+                              key={c}
+                              className={cn(
+                                'px-3 py-2.5 align-top text-xs sm:text-sm',
+                                firstAdded && 'min-w-[22rem]',
+                                isRucOrDniHeader(label) && 'min-w-[22rem]',
+                              )}
+                            >
+                              {st?.kind === 'ambiguous' && ci === 0 ? (
+                                <Select
+                                  value={String(st.selectedIndex)}
+                                  onValueChange={(v) =>
+                                    setAmbiguousSelection(ri, Number(v))
+                                  }
+                                >
+                                  <SelectTrigger
+                                    className={cn(
+                                      selectTriggerWideClass,
+                                      'max-w-none',
+                                    )}
+                                  >
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent className="max-w-[min(100vw-2rem,40rem)]">
+                                    {st.candidates.map((cand, idx) => (
+                                      <SelectItem
+                                        key={idx}
+                                        value={String(idx)}
+                                        className="whitespace-normal py-2"
+                                      >
+                                        {candidateLabel(cand, copyCols)}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              ) : st?.kind === 'ambiguous' ? (
+                                <span className="inline-block break-words">
+                                  {resolveRowValue(st, c)}
+                                </span>
+                              ) : (
+                                <span className="inline-block break-words">
+                                  {st ? resolveRowValue(st, c) : 'Sin Datos'}
+                                </span>
+                              )}
+                            </td>
+                          )
+                        })}
                       </tr>
                     )
                   })}
